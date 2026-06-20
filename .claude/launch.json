@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "rogue-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "rogue-app/dist-web", "-l", "8090"],
+      "port": 8090
+    }
+  ]
+}
