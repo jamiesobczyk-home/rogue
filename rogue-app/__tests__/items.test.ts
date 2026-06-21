@@ -14,6 +14,8 @@ import {
   randomItem,
   PotionRegistry,
   ScrollRegistry,
+  RingRegistry,
+  WandRegistry,
 } from '../src/engine';
 
 // RING_EFFECTS index order (items.ts): 0 protection, 1 add_str, 2 sustain_str,
@@ -95,14 +97,18 @@ describe('functional rings', () => {
 
 describe('weighted generation (extern.c probabilities)', () => {
   it('produces potions far more often than rings, and common effects dominate', () => {
-    const pReg = new PotionRegistry();
-    const sReg = new ScrollRegistry();
+    const regs = {
+      potion: new PotionRegistry(),
+      scroll: new ScrollRegistry(),
+      ring: new RingRegistry(),
+      wand: new WandRegistry(),
+    };
     let potions = 0;
     let rings = 0;
     let gainStr = 0;
     let raiseLevel = 0;
     for (let i = 0; i < 6000; i++) {
-      const it = randomItem(1, 1, 5, pReg, sReg);
+      const it = randomItem(1, 1, 5, regs);
       if (it instanceof Ring) rings++;
       if (it instanceof Potion) {
         potions++;

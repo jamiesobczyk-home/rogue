@@ -371,16 +371,32 @@ Tests after Phase 7: **64 green** (new `phase7.test.ts`: trap trigger/reveal,
 trap-door descent, levitation, search, haste cadence, wandering spawn). Engine
 typechecks clean.
 
+**Phase 8 — Identification & item fidelity. ✅ DONE.**
+1. ✅ **Split the five identify scrolls** (potion / scroll / weapon / armor /
+   ring-or-wand); each only works on its own category and is rejected otherwise
+   (the inventory titles the prompt accordingly).
+2. ✅ **Ring & wand appearances obfuscated** — rings show as a random gem
+   ("a ruby ring"), wands as a random material ("a copper wand"), per-game and
+   persistent, until worn / zapped / identified (new `RingRegistry` /
+   `WandRegistry`, mirroring potions and scrolls).
+3. ✅ **Hallucination scrambles item glyphs** the hero can see, not just monsters.
+4. ✅ **Monsters carry & drop real items** — each monster rolls its `carry%` for a
+   pack item at spawn and drops it where it dies (loot centralised through
+   `dropMonsterLoot`, covering melee and wand kills). Persisted in saves.
+
+Tests after Phase 8: **69 green** (new `phase8.test.ts`: ring/wand obfuscation,
+split-identify rejection, monster loot drop, hallucinated glyphs). Engine
+typechecks clean.
+
 ### Status
-Phases 1–7 are done. The TypeScript engine in `rogue-app/src/engine/` is the
+Phases 1–8 are done. The TypeScript engine in `rogue-app/src/engine/` is the
 single source of truth (the Python prototype was retired).
 
-**Still open (lower-priority tail), should we want full parity:** split the five
-identify scrolls; obfuscate ring/wand appearances; hallucinate item glyphs;
-monsters carrying/dropping real items; single-staircase + amulet-gated ascent
-with depth scaling past 26; treasure rooms; scoring & tombstone; throwing /
-launchers; ISMEAN "awake in room" behavior; no-diagonal-through-doors; the JS
-PRNG does not reproduce the BSD `rnd()` stream byte-for-byte.
+**Still open (lower-priority tail), should we want full parity:** single-staircase
++ amulet-gated ascent with depth scaling past 26; treasure rooms; scoring &
+tombstone; throwing / launchers (bow+arrow as ranged); ISMEAN "awake in room"
+behavior; no-diagonal-through-doors; the JS PRNG does not reproduce the BSD
+`rnd()` stream byte-for-byte.
 
 ---
 

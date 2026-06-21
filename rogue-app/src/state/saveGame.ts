@@ -22,8 +22,7 @@ import {
   Wand,
   Amulet,
   Item,
-  PotionRegistry,
-  ScrollRegistry,
+  ItemRegistries,
 } from '../engine';
 
 const SAVE_KEY = 'rogue.savegame.v1';
@@ -76,6 +75,10 @@ export function serializeEngine(e: GameEngine): string {
     potionColors: (e.potionReg as any).effectToColor,
     scrollIdentified: (e.scrollReg as any).identifiedMap,
     scrollLabels: (e.scrollReg as any).effectToLabel,
+    ringIdentified: (e.ringReg as any).identifiedMap,
+    ringStones: (e.ringReg as any).effectToAppearance,
+    wandIdentified: (e.wandReg as any).identifiedMap,
+    wandMaterials: (e.wandReg as any).effectToAppearance,
     dungeon: {
       level: e.dungeon.level,
       tiles: e.dungeon.tiles,
@@ -135,6 +138,7 @@ export function serializeEngine(e: GameEngine): string {
       confused: m.confused,
       frozen: m.frozen,
       sleeping: m.sleeping,
+      pack: m.pack ? serializeItem(m.pack) : null,
     })),
     items: e.items.map(serializeItem),
   };
@@ -145,7 +149,7 @@ export function serializeEngine(e: GameEngine): string {
 // Deserialization
 // ---------------------------------------------------------------------------
 
-function rebuildItem(d: any, potionReg: PotionRegistry, scrollReg: ScrollRegistry): Item {
+function rebuildItem(d: any, regs: ItemRegistries): Item {
   let it: Item;
   switch (d.kind) {
     case 'gold':
@@ -158,23 +162,22 @@ function rebuildItem(d: any, potionReg: PotionRegistry, scrollReg: ScrollRegistr
       it = new Armor(d.x, d.y, 0, d.enchant ?? 0, d.cursed);
       break;
     case 'potion':
-      it = new Potion(d.x, d.y, d.effectKey, potionReg);
+      it = new Potion(d.x, d.y, d.effectKey, regs.potion);
       break;
     case 'scroll':
-      it = new Scroll(d.x, d.y, d.effectKey, scrollReg);
+      it = new Scroll(d.x, d.y, d.effectKey, regs.scroll);
       break;
     case 'food':
       it = new Food(d.x, d.y, 0);
       (it as Food).nutrition = d.nutrition;
       break;
     case 'ring':
-      it = new Ring(d.x, d.y, 0);
+      it = new Ring(d.x, d.y, 0, d.bonus ?? 0, d.cursed, regs.ring);
       (it as Ring).effectKey = d.effectKey;
-      (it as Ring).bonus = d.bonus ?? 0;
       (it as Ring).worn = d.worn ?? false;
       break;
     case 'wand':
-      it = new Wand(d.x, d.y, 0);
+      it = new Wand(d.x, d.y, 0, regs.wand);
       (it as Wand).effectKey = d.effectKey;
       (it as Wand).charges = d.charges;
       break;
@@ -211,6 +214,10 @@ export function deserializeEngine(json: string): GameEngine {
   (e.potionReg as any).effectToColor = d.potionColors;
   (e.scrollReg as any).identifiedMap = d.scrollIdentified;
   (e.scrollReg as any).effectToLabel = d.scrollLabels;
+  if (d.ringIdentified) (e.ringReg as any).identifiedMap = d.ringIdentified;
+  if (d.ringStones) (e.ringReg as any).effectToAppearance = d.ringStones;
+  if (d.wandIdentified) (e.wandReg as any).identifiedMap = d.wandIdentified;
+  if (d.wandMaterials) (e.wandReg as any).effectToAppearance = d.wandMaterials;
 
   // Dungeon.
   const dn = new Dungeon(d.dungeon.level);
@@ -254,7 +261,8 @@ export function deserializeEngine(json: string): GameEngine {
     levitating: d.player.levitating ?? 0,
     confusingTouch: d.player.confusingTouch ?? false,
   });
-  p.inventory = d.player.inventory.map((id: any) => rebuildItem(id, e.potionReg, e.scrollReg));
+  const regs = e.registries;
+  p.inventory = d.player.inventory.map((id: any) => rebuildItem(id, regs));
   p.weapon = d.player.weaponIdx >= 0 ? p.inventory[d.player.weaponIdx] : null;
   p.armor = d.player.armorIdx >= 0 ? p.inventory[d.player.armorIdx] : null;
   p.rings = (d.player.ringIdxs ?? []).map((i: number) => p.inventory[i]).filter(Boolean) as Ring[];
@@ -275,11 +283,12 @@ export function deserializeEngine(json: string): GameEngine {
     mon.confused = m.confused;
     mon.frozen = m.frozen;
     mon.sleeping = m.sleeping;
+    mon.pack = m.pack ? rebuildItem(m.pack, regs) : null;
     return mon;
   });
 
   // Floor items.
-  e.items = d.items.map((id: any) => rebuildItem(id, e.potionReg, e.scrollReg));
+  e.items = d.items.map((id: any) => rebuildItem(id, regs));
 
   return e;
 }

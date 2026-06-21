@@ -117,6 +117,7 @@ export class Monster extends Actor {
   aggravated = false;
   scared = 0;
   invisible: boolean;
+  pack: import('./items').Item | null = null; // treasure carried, dropped on death
 
   constructor(x: number, y: number, template: MonsterTemplate) {
     const hp = Math.max(1, rollDice(template.level, 8));

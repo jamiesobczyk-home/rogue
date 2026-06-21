@@ -375,7 +375,11 @@ export class Potion extends Item {
 // ---------------------------------------------------------------------------
 
 const SCROLL_EFFECTS: EffectDef[] = [
-  { key: 'identify', name: 'identify', prob: 43 }, // five identify variants merged
+  { key: 'id_potion', name: 'identify potion', prob: 10 },
+  { key: 'id_scroll', name: 'identify scroll', prob: 10 },
+  { key: 'id_weapon', name: 'identify weapon', prob: 6 },
+  { key: 'id_armor', name: 'identify armor', prob: 7 },
+  { key: 'id_ringwand', name: 'identify ring, wand or staff', prob: 10 },
   { key: 'magic_map', name: 'magic mapping', prob: 4 },
   { key: 'hold_monster', name: 'hold monster', prob: 2 },
   { key: 'sleep', name: 'sleep', prob: 3 },
@@ -455,7 +459,18 @@ export class Scroll extends Item {
     const key = this.effectKey;
     this.registry.identify(key);
 
-    if (key === 'identify') return '__identify__';
+    if (key.startsWith('id_')) {
+      // Each identify scroll only works on its own item category.
+      const kindMap: Record<string, string> = {
+        id_potion: 'potion',
+        id_scroll: 'scroll',
+        id_weapon: 'weapon',
+        id_armor: 'armor',
+        id_ringwand: 'ringwand',
+      };
+      engine.identifyKind = kindMap[key];
+      return '__identify__';
+    }
     if (key === 'magic_map') {
       engine.revealMap();
       return 'You see a vision of the dungeon around you.';
@@ -584,17 +599,88 @@ const RING_EFFECTS: RingDef[] = [
   { key: 'maintain_armor', name: 'maintain armor', prob: 5, value: 380, magnitude: false },
 ];
 
+// Random appearances hide a ring/wand's true kind until it is identified
+// (Rogue 5.4.4 gem stones for rings, wood/metal for wands).
+const RING_STONES = [
+  'agate', 'alexandrite', 'amethyst', 'carnelian', 'diamond', 'emerald', 'germanium', 'granite',
+  'garnet', 'jade', 'kryptonite', 'lapis lazuli', 'moonstone', 'obsidian', 'onyx', 'opal', 'pearl',
+  'peridot', 'ruby', 'sapphire', 'tiger eye', 'topaz', 'turquoise', 'zircon',
+];
+
+const WAND_MATERIALS = [
+  'avocado wood', 'balsa', 'bamboo', 'banyan', 'birch', 'cedar', 'cherry', 'copper', 'dogwood',
+  'driftwood', 'ebony', 'elm', 'eucalyptus', 'hemlock', 'holly', 'ironwood', 'mahogany', 'maple',
+  'oaken', 'pine', 'redwood', 'rosewood', 'silver', 'teak', 'walnut', 'zinc',
+];
+
+/** Shared shape for the per-game appearance registries. */
+class AppearanceRegistry {
+  protected effectToAppearance: Record<string, string> = {};
+  protected identifiedMap: Record<string, boolean> = {};
+
+  constructor(defs: { key: string }[], pool: string[], private noun: string, private prefix: string) {
+    const shuffled = [...pool];
+    rng.shuffle(shuffled);
+    defs.forEach(({ key }, i) => {
+      this.effectToAppearance[key] = shuffled[i % shuffled.length];
+      this.identifiedMap[key] = false;
+    });
+  }
+
+  appearanceFor(key: string): string {
+    return this.effectToAppearance[key] ?? 'strange';
+  }
+
+  identify(key: string): void {
+    this.identifiedMap[key] = true;
+  }
+
+  isIdentified(key: string): boolean {
+    return this.identifiedMap[key] ?? false;
+  }
+
+  /** "a ruby ring" / "a copper wand". */
+  unknownName(key: string): string {
+    return `a ${this.appearanceFor(key)} ${this.noun}`;
+  }
+
+  prefixWord(): string {
+    return this.prefix;
+  }
+}
+
+export class RingRegistry extends AppearanceRegistry {
+  constructor() {
+    super(RING_EFFECTS, RING_STONES, 'ring', 'ring of');
+  }
+}
+
+export class WandRegistry extends AppearanceRegistry {
+  constructor() {
+    super(WAND_EFFECTS, WAND_MATERIALS, 'wand', 'wand of');
+  }
+}
+
 export class Ring extends Item {
   kind = 'ring';
   effectKey: string;
   bonus: number; // magnitude for protection/add_str/dexterity/increase_damage
   worn = false;
+  registry: RingRegistry | null;
 
-  constructor(x: number, y: number, effectIdx?: number, bonus?: number, cursed = false) {
+  constructor(
+    x: number,
+    y: number,
+    effectIdx?: number,
+    bonus?: number,
+    cursed = false,
+    registry: RingRegistry | null = null,
+  ) {
     const idx = effectIdx ?? RING_EFFECTS.indexOf(pickByProb(RING_EFFECTS));
     const def = RING_EFFECTS[idx];
     super(x, y, '=', RING_COLOR, `ring of ${def.name}`, 1, def.value);
     this.effectKey = def.key;
+    this.registry = registry;
     if (bonus !== undefined) {
       this.bonus = bonus;
     } else if (def.magnitude) {
@@ -604,10 +690,19 @@ export class Ring extends Item {
       this.bonus = 0;
     }
     this.cursed = cursed || this.bonus < 0;
-    this.identified = false; // bonus hidden until worn
+    this.identified = false; // type + bonus hidden until worn/identified
+  }
+
+  private typeKnown(): boolean {
+    return this.identified || (this.registry?.isIdentified(this.effectKey) ?? false);
   }
 
   displayName(): string {
+    if (!this.typeKnown() && this.registry) {
+      let nm = this.registry.unknownName(this.effectKey);
+      if (this.worn) nm += ' (on hand)';
+      return nm;
+    }
     let nm = this.name;
     if (this.identified) {
       const def = RING_EFFECTS.find((r) => r.key === this.effectKey);
@@ -629,6 +724,7 @@ export class Ring extends Item {
     player.rings.push(this);
     this.worn = true;
     this.identified = true;
+    this.registry?.identify(this.effectKey);
     if (this.effectKey === 'aggravate') {
       for (const m of engine.monsters) m.aggravated = true;
       return `You put on the ${this.name}.  You hear a faint humming.`;
@@ -668,22 +764,32 @@ export class Wand extends Item {
   kind = 'wand';
   effectKey: string;
   charges: number;
+  registry: WandRegistry | null;
 
-  constructor(x: number, y: number, effectIdx?: number) {
+  constructor(x: number, y: number, effectIdx?: number, registry: WandRegistry | null = null) {
     const idx = effectIdx ?? WAND_EFFECTS.indexOf(pickByProb(WAND_EFFECTS));
     const def = WAND_EFFECTS[idx];
     super(x, y, '/', WAND_COLOR, `wand of ${def.name}`, 5, 10);
     this.effectKey = def.key;
     this.charges = rng.randint(3, 7);
+    this.registry = registry;
+    this.identified = false;
+  }
+
+  private typeKnown(): boolean {
+    return this.identified || (this.registry?.isIdentified(this.effectKey) ?? false);
   }
 
   displayName(): string {
+    if (!this.typeKnown() && this.registry) return this.registry.unknownName(this.effectKey);
     return `${this.name} (${this.charges} charges)`;
   }
 
   use(engine: GameEngine): string {
     if (this.charges <= 0) return 'The wand has no charges left.';
     this.charges -= 1;
+    this.identified = true;
+    this.registry?.identify(this.effectKey); // zapping reveals the wand's kind
     return engine.zapWand(this);
   }
 }
@@ -720,13 +826,14 @@ function maybeEnchant(): { enchant: number; cursed: boolean } {
   return { enchant: 0, cursed: false };
 }
 
-export function randomItem(
-  x: number,
-  y: number,
-  dungeonLevel: number,
-  potionReg: PotionRegistry,
-  scrollReg: ScrollRegistry,
-): Item {
+export interface ItemRegistries {
+  potion: PotionRegistry;
+  scroll: ScrollRegistry;
+  ring: RingRegistry;
+  wand: WandRegistry;
+}
+
+export function randomItem(x: number, y: number, dungeonLevel: number, regs: ItemRegistries): Item {
   // Gold is placed independently in the original; we fold it in at ~1/3.
   if (rng.random() < 0.34) {
     return new Gold(x, y, rng.randint(2, 50 + dungeonLevel * 10));
@@ -743,10 +850,10 @@ export function randomItem(
     const { enchant, cursed } = maybeEnchant();
     return new Armor(x, y, undefined, enchant, cursed);
   }
-  if (category === 'potion') return new Potion(x, y, pickByProb(POTION_EFFECTS).key, potionReg);
-  if (category === 'scroll') return new Scroll(x, y, pickByProb(SCROLL_EFFECTS).key, scrollReg);
-  if (category === 'ring') return new Ring(x, y);
-  if (category === 'wand') return new Wand(x, y);
+  if (category === 'potion') return new Potion(x, y, pickByProb(POTION_EFFECTS).key, regs.potion);
+  if (category === 'scroll') return new Scroll(x, y, pickByProb(SCROLL_EFFECTS).key, regs.scroll);
+  if (category === 'ring') return new Ring(x, y, undefined, undefined, false, regs.ring);
+  if (category === 'wand') return new Wand(x, y, undefined, regs.wand);
 
   return new Gold(x, y, 10);
 }

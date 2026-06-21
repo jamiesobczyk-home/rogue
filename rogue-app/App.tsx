@@ -101,6 +101,7 @@ export default function App() {
       <InventoryScreen
         player={engine.player}
         identifyMode={engine.state === STATE_IDENTIFY}
+        identifyKind={engine.identifyKind}
         onUse={(item: Item) => {
           act((e) => e.actionUseItem(item));
           if (engineRef.current?.state === STATE_PLAYING) setScreen('game');
@@ -110,7 +111,8 @@ export default function App() {
         }}
         onIdentify={(item: Item) => {
           act((e) => e.actionIdentifyItem(item));
-          setScreen('game');
+          // A wrong-category pick is rejected and keeps us in identify mode.
+          if (engineRef.current?.state === STATE_PLAYING) setScreen('game');
         }}
         onClose={() => setScreen('game')}
       />

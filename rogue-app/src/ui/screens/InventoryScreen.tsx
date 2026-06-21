@@ -6,11 +6,20 @@ import { COLORS, MONO, rgb } from '../theme';
 interface Props {
   player: Player;
   identifyMode: boolean;
+  identifyKind?: string;
   onUse: (item: Item) => void;
   onDrop: (item: Item) => void;
   onIdentify: (item: Item) => void;
   onClose: () => void;
 }
+
+const IDENTIFY_LABEL: Record<string, string> = {
+  potion: 'potion',
+  scroll: 'scroll',
+  weapon: 'weapon',
+  armor: 'armor',
+  ringwand: 'ring or wand',
+};
 
 function equipTag(player: Player, item: Item): string {
   if (player.weapon === item) return ' (wielded)';
@@ -18,12 +27,21 @@ function equipTag(player: Player, item: Item): string {
   return '';
 }
 
-export function InventoryScreen({ player, identifyMode, onUse, onDrop, onIdentify, onClose }: Props) {
+export function InventoryScreen({
+  player,
+  identifyMode,
+  identifyKind,
+  onUse,
+  onDrop,
+  onIdentify,
+  onClose,
+}: Props) {
+  const idLabel = identifyKind && IDENTIFY_LABEL[identifyKind] ? IDENTIFY_LABEL[identifyKind] : 'item';
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title} allowFontScaling={false}>
-          {identifyMode ? 'Identify which item?' : 'Inventory'}
+          {identifyMode ? `Identify which ${idLabel}?` : 'Inventory'}
         </Text>
         <Pressable onPress={onClose} hitSlop={12}>
           <Text style={styles.close} allowFontScaling={false}>

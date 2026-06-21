@@ -74,7 +74,7 @@ describe('AUDIT 6 — equipped weapon/armor survive save/load', () => {
 describe('AUDIT 4 — identify-scroll flow does not get stuck', () => {
   it('enters IDENTIFY then returns to PLAYING and marks the item identified', () => {
     const e = new GameEngine('ident');
-    const scroll = new Scroll(0, 0, 'identify', e.scrollReg);
+    const scroll = new Scroll(0, 0, 'id_potion', e.scrollReg);
     const potion = new Potion(0, 0, 'heal', e.potionReg);
     potion.identified = false;
     e.player.inventory.push(scroll, potion);

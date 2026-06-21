@@ -25,8 +25,14 @@ import {
   Food,
   Amulet,
   Wand,
+  Weapon,
+  Armor,
+  Ring,
   PotionRegistry,
   ScrollRegistry,
+  RingRegistry,
+  WandRegistry,
+  ItemRegistries,
   randomItem,
 } from './items';
 import { Monster, spawnMonster } from './monsters';
@@ -71,6 +77,8 @@ const LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 export class GameEngine {
   potionReg: PotionRegistry;
   scrollReg: ScrollRegistry;
+  ringReg: RingRegistry;
+  wandReg: WandRegistry;
 
   dungeonLevel = 1;
   dungeon: Dungeon;
@@ -81,6 +89,7 @@ export class GameEngine {
   messages: string[] = [];
   state = STATE_PLAYING;
   turn = 0;
+  identifyKind = 'any'; // which item category the pending identify scroll targets
 
   monsterDetectionTurns = 0;
   seed: string;
@@ -96,6 +105,8 @@ export class GameEngine {
 
     this.potionReg = new PotionRegistry();
     this.scrollReg = new ScrollRegistry();
+    this.ringReg = new RingRegistry();
+    this.wandReg = new WandRegistry();
 
     this.dungeon = this.buildDungeon();
 
@@ -114,6 +125,10 @@ export class GameEngine {
     return new Dungeon(this.dungeonLevel);
   }
 
+  get registries(): ItemRegistries {
+    return { potion: this.potionReg, scroll: this.scrollReg, ring: this.ringReg, wand: this.wandReg };
+  }
+
   private populate(): void {
     this.monsters = [];
     this.items = [];
@@ -124,10 +139,15 @@ export class GameEngine {
     }
 
     for (const [mx, my] of this.dungeon.monsterSpawns) {
-      this.monsters.push(spawnMonster(mx, my, this.dungeonLevel));
+      const m = spawnMonster(mx, my, this.dungeonLevel);
+      // A monster carries treasure with its template carry% (extern.c).
+      if (rng.randrange(100) < m.template.carry) {
+        m.pack = randomItem(m.x, m.y, this.dungeonLevel, this.registries);
+      }
+      this.monsters.push(m);
     }
     for (const [ix, iy] of this.dungeon.itemSpawns) {
-      this.items.push(randomItem(ix, iy, this.dungeonLevel, this.potionReg, this.scrollReg));
+      this.items.push(randomItem(ix, iy, this.dungeonLevel, this.registries));
     }
   }
 
@@ -283,11 +303,39 @@ export class GameEngine {
     this.endPlayerTurn();
   }
 
+  /** Does `item` match the category the pending identify scroll targets? */
+  private matchesIdentifyKind(item: Item): boolean {
+    switch (this.identifyKind) {
+      case 'any':
+        return true;
+      case 'potion':
+        return item instanceof Potion;
+      case 'scroll':
+        return item instanceof Scroll;
+      case 'weapon':
+        return item instanceof Weapon;
+      case 'armor':
+        return item instanceof Armor;
+      case 'ringwand':
+        return item instanceof Ring || item instanceof Wand;
+      default:
+        return true;
+    }
+  }
+
   actionIdentifyItem(item: Item): void {
+    if (this.state !== STATE_IDENTIFY) return;
+    if (!this.matchesIdentifyKind(item)) {
+      this.addMessage('This scroll has no effect on that.');
+      return; // stay in identify mode so the player can pick again
+    }
     item.identified = true;
     if (item instanceof Potion) item.registry.identify(item.effectKey);
     if (item instanceof Scroll) item.registry.identify(item.effectKey);
+    if (item instanceof Ring) item.registry?.identify(item.effectKey);
+    if (item instanceof Wand) item.registry?.identify(item.effectKey);
     this.addMessage(`That is ${item.displayName()}.`);
+    this.identifyKind = 'any';
     this.state = STATE_PLAYING;
   }
 
@@ -357,13 +405,22 @@ export class GameEngine {
     if (!target.alive) {
       this.addMessage(`You killed the ${target.name}!`);
       this.removeMonster(target);
-      // Treasure drop gated by the monster's carry% (extern.c).
-      if (rng.randrange(100) < target.template.carry) {
-        const amount = rng.randint(1, Math.floor(target.xpValue / 2) + 1);
-        this.items.push(new Gold(target.x, target.y, amount));
-      }
+      this.dropMonsterLoot(target);
       const lvlMsg = this.player.gainExp(target.xpValue);
       if (lvlMsg) this.addMessage(lvlMsg);
+    }
+  }
+
+  /** Drop whatever a slain monster was carrying (its pack item or gold). */
+  private dropMonsterLoot(m: Monster): void {
+    if (m.pack) {
+      m.pack.x = m.x;
+      m.pack.y = m.y;
+      this.items.push(m.pack);
+      m.pack = null;
+    } else if (rng.randrange(100) < m.template.carry) {
+      const amount = rng.randint(1, Math.floor(m.xpValue / 2) + 1);
+      this.items.push(new Gold(m.x, m.y, amount));
     }
   }
 
@@ -663,6 +720,7 @@ export class GameEngine {
 
     const killed = (verb: string): string => {
       this.removeMonster(target);
+      this.dropMonsterLoot(target);
       const lvl = p.gainExp(target.xpValue);
       if (lvl) this.addMessage(lvl);
       return `The ${verb} kills the ${target.name}!`;
@@ -794,11 +852,14 @@ export class GameEngine {
       }
     }
 
+    const ITEM_GLYPHS = '!?/=)[%*,$';
     const itemData: EntityDraw[] = [];
     for (const item of this.items) {
       const visible = dungeon.visible[item.y][item.x];
       if (visible || dungeon.explored[item.y][item.x]) {
-        itemData.push([item.x, item.y, item.char, item.color, visible]);
+        // Hallucination scrambles item glyphs the hero can currently see.
+        const ch = p.hallucinating > 0 && visible ? ITEM_GLYPHS[rng.randrange(ITEM_GLYPHS.length)] : item.char;
+        itemData.push([item.x, item.y, ch, item.color, visible]);
       }
     }
 
