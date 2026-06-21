@@ -6,9 +6,10 @@ interface Props {
   hasSave: boolean;
   onNewGame: () => void;
   onContinue: () => void;
+  onGuide: () => void;
 }
 
-export function MenuScreen({ hasSave, onNewGame, onContinue }: Props) {
+export function MenuScreen({ hasSave, onNewGame, onContinue, onGuide }: Props) {
   return (
     <View style={styles.container}>
       <Text style={styles.title} allowFontScaling={false}>
@@ -35,6 +36,14 @@ export function MenuScreen({ hasSave, onNewGame, onContinue }: Props) {
         >
           <Text style={styles.btnText} allowFontScaling={false}>
             New Game
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onGuide}
+          style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+        >
+          <Text style={styles.btnText} allowFontScaling={false}>
+            How to Play
           </Text>
         </Pressable>
       </View>

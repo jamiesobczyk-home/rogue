@@ -389,14 +389,33 @@ split-identify rejection, monster loot drop, hallucinated glyphs). Engine
 typechecks clean.
 
 ### Status
-Phases 1–8 are done. The TypeScript engine in `rogue-app/src/engine/` is the
+**Phase 9 — Endgame & meta (Tier 3). ✅ DONE.**
+1. ✅ **Amulet-gated ascent**: you cannot climb until you hold the Amulet of
+   Yendor; descent now continues indefinitely past level 26.
+2. ✅ **Depth scaling** (`lev_add`): monsters spawned below the Amulet level gain
+   HP, experience, and combat level.
+3. ✅ **Treasure rooms** (~1 in 20 levels): a room packed with gold and sleeping
+   guardians.
+4. ✅ **Scoring & tombstone**: cause of death is tracked (monster/trap/starvation/
+   self) and shown on a RIP tombstone with depth, gold, turns, and a gold-driven
+   score (+ amulet win bonus).
+
+**In-app player guide. ✅ DONE.** A "How to Play" screen off the main menu with the
+quest, controls, and colour-matched legends for the map, items, all 26 monsters,
+and HUD status — plus reference links. (Chosen over external-only docs so it works
+offline in the PWA.)
+
+Tests after Phase 9: **74 green** (new `phase9.test.ts`: amulet gating, infinite
+descent, depth scaling, treasure rooms, cause-of-death).
+
+### Status
+Phases 1–9 are done. The TypeScript engine in `rogue-app/src/engine/` is the
 single source of truth (the Python prototype was retired).
 
-**Still open (lower-priority tail), should we want full parity:** single-staircase
-+ amulet-gated ascent with depth scaling past 26; treasure rooms; scoring &
-tombstone; throwing / launchers (bow+arrow as ranged); ISMEAN "awake in room"
-behavior; no-diagonal-through-doors; the JS PRNG does not reproduce the BSD
-`rnd()` stream byte-for-byte.
+**Still open (lower-priority tail), should we want full parity:** throwing /
+launchers (bow+arrow as ranged); ISMEAN "awake in room" behavior;
+no-diagonal-through-doors; the JS PRNG does not reproduce the BSD `rnd()` stream
+byte-for-byte.
 
 ---
 

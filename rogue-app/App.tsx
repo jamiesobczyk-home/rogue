@@ -9,9 +9,10 @@ import { MenuScreen } from './src/ui/screens/MenuScreen';
 import { GameScreen } from './src/ui/screens/GameScreen';
 import { InventoryScreen } from './src/ui/screens/InventoryScreen';
 import { GameOverScreen } from './src/ui/screens/GameOverScreen';
+import { GuideScreen } from './src/ui/screens/GuideScreen';
 import { COLORS } from './src/ui/theme';
 
-type Screen = 'menu' | 'game' | 'inventory' | 'gameover';
+type Screen = 'menu' | 'game' | 'inventory' | 'gameover' | 'guide';
 
 export default function App() {
   const engineRef = useRef<GameEngine | null>(null);
@@ -86,7 +87,16 @@ export default function App() {
   const engine = engineRef.current;
 
   if (screen === 'menu') {
-    content = <MenuScreen hasSave={saveExists} onNewGame={newGame} onContinue={continueGame} />;
+    content = (
+      <MenuScreen
+        hasSave={saveExists}
+        onNewGame={newGame}
+        onContinue={continueGame}
+        onGuide={() => setScreen('guide')}
+      />
+    );
+  } else if (screen === 'guide') {
+    content = <GuideScreen onClose={() => setScreen('menu')} />;
   } else if (screen === 'gameover' && engine && data) {
     content = (
       <GameOverScreen
