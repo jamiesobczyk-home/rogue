@@ -221,8 +221,7 @@ export class Monster extends Actor {
     let msg = `The ${this.name} hits you for ${total} damage!`;
 
     if (this.flags.has('poison') && rng.random() < 0.5) {
-      player.strCur = Math.max(1, player.strCur - 1);
-      msg += '  You feel weak!';
+      if (player.reduceStr(1)) msg += '  You feel weak!';
     }
     if (this.flags.has('confuse') && rng.random() < 0.5) {
       player.confused = CONFUSED_TURNS;
@@ -251,8 +250,12 @@ export class Monster extends Actor {
   private specialAttack(engine: GameEngine, player: Player): string | null {
     if (this.flags.has('rust_armor')) {
       if (player.armor) {
+        const armor = player.armor as unknown as { enchant: number; protected?: boolean };
+        if (armor.protected || player.hasRing('maintain_armor')) {
+          return `The ${this.name}'s touch fails to corrode your ${player.armor.name}.`;
+        }
         player.armor.acBonus = Math.max(0, player.armor.acBonus - 1);
-        (player.armor as unknown as { enchant: number }).enchant -= 1;
+        armor.enchant -= 1;
         player.recalcAc();
         return `The ${this.name} corrodes your ${player.armor.name}!`;
       }

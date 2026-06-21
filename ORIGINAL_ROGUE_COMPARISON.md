@@ -42,8 +42,8 @@ shares all the same divergences).
 | **XP-to-level table** | ❌ Pure doubling, diverges after L7 | medium |
 | ~~Dungeon generation~~ | ✅ 3×3 grid + gone/dark rooms (Phase 4; mazes pending) | resolved |
 | **Player HP regeneration** | ❌ Missing entirely | medium |
-| Item tables (potions/scrolls/rings/wands) | ⚠️ Incomplete, unweighted, rings inert | medium |
-| Weapon table + multi-attack damage | ⚠️ Wrong weapon set, single attack only | medium |
+| ~~Item tables (potions/scrolls/rings/wands)~~ | ✅ Weighted, completed, rings functional (Phase 5) | resolved |
+| ~~Weapon table + multi-attack damage~~ | ✅ Original nine weapons + monster multi-attack | resolved |
 | FOV / dark rooms | ⚠️ No dark rooms | low |
 
 ---
@@ -307,13 +307,33 @@ Tests after Phase 4: **45 green** (added `dungeon.test.ts`: 9-room grid, gone
 rooms, depth-scaled dark rooms, and start→down-stairs connectivity on 50 seeds,
 plus an ASCII level dump). Engine typechecks clean.
 
-**Phase 5 — Item fidelity (medium).**
-1. Add the missing potions/scrolls/wands; split identify scrolls.
-2. Make item selection **weighted** by the original probability columns
-   (appendix) via `pick_one`.
-3. Implement real **ring** passive effects + their hunger cost.
-4. Replace the weapon set with the original nine (+ correct damage dice; decide
-   whether to model launchers/ammo or stub thrown weapons).
+**Phase 5 — Item fidelity. ✅ DONE (with noted simplifications).**
+1. ✅ **Weighted generation** by the original probability columns: object type
+   via `things[]` (potion 26 / scroll 36 / food 16 / weapon 7 / armor 7 / ring 4
+   / wand 4), and effect/material via each `*_info` prob column (`pickByProb`).
+2. ✅ Potions completed to all 14 (added **magic detection**, **levitation**);
+   scrolls expanded (added **food detection**, **protect armor**, **monster
+   confusion**); wands rebuilt to the real `ws_info` set (light, polymorph,
+   haste/slow monster, teleport to/away, cancellation, invisibility, nothing, …).
+3. ✅ **Functional rings** — two ring slots with wear/remove and real ongoing
+   effects: protection (AC), add strength, sustain strength, see invisible,
+   dexterity (to-hit), increase damage, regeneration (faster heal), slow
+   digestion (food), maintain armor (rust immunity), aggravate (on wear),
+   stealth (detection range), teleportation (random). Worn rings also cost food.
+   Cursed rings can't be removed. State persists across save/load.
+4. ✅ Weapons replaced with the original nine and correct dice (mace 2x4, long
+   sword 3x4, two-handed 4x4, dagger 1x6, spear 2x3, …); base bonus is enchant
+   only. Armor already matched.
+
+> **Simplifications (documented, low impact):** the five identify scrolls are
+> kept as one generic `identify` (combined 43% prob) rather than per-type;
+> launchers/ammo (bow+arrow) are wieldable weapons without a separate
+> fire-the-missile mechanic; `searching`/`adornment` rings are inert because we
+> have no traps yet.
+
+Tests after Phase 5: **54 green** (new `items.test.ts`: weapon dice, ring
+effects, two-ring limit, cursed-ring lock, slow digestion, weighted
+distribution). Engine typechecks clean.
 
 **Phase 6 — Lighting & polish (low).**
 Dark-room FOV, hunger cap/threshold alignment to `STOMACHSIZE`/`MORETIME`,

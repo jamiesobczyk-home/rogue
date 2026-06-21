@@ -1,4 +1,8 @@
 // Item definitions and effect handlers.
+//
+// Data tables (names, spawn probabilities, worths) follow the original Rogue
+// 5.4.4 tables in extern.c; item generation is weighted by those probabilities
+// rather than uniform. Rings are worn and apply ongoing effects (see Player).
 
 import {
   WEAPON_COLOR,
@@ -22,6 +26,30 @@ import { rng } from './rng';
 import type { GameEngine } from './engine';
 
 // ---------------------------------------------------------------------------
+// Weighted selection helpers (extern.c pick_one / pick_index)
+// ---------------------------------------------------------------------------
+
+function pickByProb<T extends { prob: number }>(list: readonly T[]): T {
+  const total = list.reduce((s, e) => s + e.prob, 0);
+  let r = rng.random() * total;
+  for (const e of list) {
+    if (r < e.prob) return e;
+    r -= e.prob;
+  }
+  return list[list.length - 1];
+}
+
+function pickIndexByProb(probs: readonly number[]): number {
+  const total = probs.reduce((s, p) => s + p, 0);
+  let r = rng.random() * total;
+  for (let i = 0; i < probs.length; i++) {
+    if (r < probs[i]) return i;
+    r -= probs[i];
+  }
+  return probs.length - 1;
+}
+
+// ---------------------------------------------------------------------------
 // Base Item
 // ---------------------------------------------------------------------------
 
@@ -36,7 +64,7 @@ export class Item {
   name: string;
   weight: number;
   value: number;
-  identified = true; // overridden for potions/scrolls
+  identified = true; // overridden for potions/scrolls/rings
   cursed = false;
 
   // Placeholders so item classes don't need to define unused attrs
@@ -82,20 +110,26 @@ export class Gold extends Item {
 }
 
 // ---------------------------------------------------------------------------
-// Weapon
+// Weapon  (original nine; damage is the wielded dice, no inherent plus)
 // ---------------------------------------------------------------------------
 
-// (name, char, damageDice, damageBonus, value, weight)
-const WEAPONS: [string, string, [number, number], number, number, number][] = [
-  ['mace', ')', [2, 4], 1, 8, 30],
-  ['long sword', ')', [1, 8], 2, 15, 40],
-  ['short sword', ')', [1, 6], 0, 6, 30],
-  ['dagger', ')', [1, 4], 0, 2, 10],
-  ['two-handed sword', ')', [3, 6], 0, 25, 75],
-  ['spear', ')', [2, 3], 0, 5, 25],
-  ['morning star', ')', [2, 5], 1, 12, 35],
-  ['war hammer', ')', [2, 4], 1, 10, 35],
-  ['flail', ')', [2, 4], 0, 8, 30],
+interface WeaponDef {
+  name: string;
+  dice: [number, number];
+  prob: number;
+  value: number;
+}
+
+const WEAPONS: WeaponDef[] = [
+  { name: 'mace', dice: [2, 4], prob: 11, value: 8 },
+  { name: 'long sword', dice: [3, 4], prob: 11, value: 15 },
+  { name: 'short bow', dice: [1, 1], prob: 12, value: 15 },
+  { name: 'arrow', dice: [1, 1], prob: 12, value: 1 },
+  { name: 'dagger', dice: [1, 6], prob: 8, value: 3 },
+  { name: 'two-handed sword', dice: [4, 4], prob: 10, value: 75 },
+  { name: 'dart', dice: [1, 1], prob: 12, value: 2 },
+  { name: 'shuriken', dice: [1, 2], prob: 12, value: 5 },
+  { name: 'spear', dice: [2, 3], prob: 12, value: 5 },
 ];
 
 export class Weapon extends Item {
@@ -103,11 +137,11 @@ export class Weapon extends Item {
   enchant: number;
 
   constructor(x: number, y: number, templateIdx?: number, enchant = 0, cursed = false) {
-    const idx = templateIdx ?? rng.randrange(WEAPONS.length);
-    const [nm, ch, dd, db, val, wt] = WEAPONS[idx];
-    super(x, y, ch, WEAPON_COLOR, nm, wt, val);
-    this.damageDice = dd;
-    this.damageBonus = db + enchant;
+    const idx = templateIdx ?? WEAPONS.indexOf(pickByProb(WEAPONS));
+    const def = WEAPONS[idx];
+    super(x, y, ')', WEAPON_COLOR, def.name, 1, def.value);
+    this.damageDice = def.dice;
+    this.damageBonus = enchant; // original weapons have no base bonus
     this.enchant = enchant;
     this.cursed = cursed;
   }
@@ -132,30 +166,37 @@ export class Weapon extends Item {
 }
 
 // ---------------------------------------------------------------------------
-// Armor
+// Armor  (names + AC match the original; acBonus = 10 - originalAC)
 // ---------------------------------------------------------------------------
 
-// (name, char, acBonus, value, weight)
-const ARMORS: [string, string, number, number, number][] = [
-  ['leather armor', '[', 2, 5, 20],
-  ['ring mail', '[', 3, 8, 25],
-  ['studded leather', '[', 3, 8, 25],
-  ['scale mail', '[', 4, 11, 30],
-  ['chain mail', '[', 5, 20, 40],
-  ['splint mail', '[', 6, 40, 45],
-  ['banded mail', '[', 6, 40, 45],
-  ['plate mail', '[', 7, 75, 50],
+interface ArmorDef {
+  name: string;
+  ac: number; // acBonus
+  prob: number;
+  value: number;
+}
+
+const ARMORS: ArmorDef[] = [
+  { name: 'leather armor', ac: 2, prob: 20, value: 20 },
+  { name: 'ring mail', ac: 3, prob: 15, value: 25 },
+  { name: 'studded leather', ac: 3, prob: 15, value: 20 },
+  { name: 'scale mail', ac: 4, prob: 13, value: 30 },
+  { name: 'chain mail', ac: 5, prob: 12, value: 75 },
+  { name: 'splint mail', ac: 6, prob: 10, value: 80 },
+  { name: 'banded mail', ac: 6, prob: 10, value: 90 },
+  { name: 'plate mail', ac: 7, prob: 5, value: 150 },
 ];
 
 export class Armor extends Item {
   kind = 'armor';
   enchant: number;
+  protected = false; // scroll of protect armor / ring of maintain armor
 
   constructor(x: number, y: number, templateIdx?: number, enchant = 0, cursed = false) {
-    const idx = templateIdx ?? rng.randrange(ARMORS.length);
-    const [nm, ch, ac, val, wt] = ARMORS[idx];
-    super(x, y, ch, ARMOR_COLOR, nm, wt, val);
-    this.acBonus = ac + enchant;
+    const idx = templateIdx ?? ARMORS.indexOf(pickByProb(ARMORS));
+    const def = ARMORS[idx];
+    super(x, y, '[', ARMOR_COLOR, def.name, 1, def.value);
+    this.acBonus = def.ac + enchant;
     this.enchant = enchant;
     this.cursed = cursed;
   }
@@ -186,19 +227,27 @@ export class Armor extends Item {
 // Potion  (unknown name until identified)
 // ---------------------------------------------------------------------------
 
-const POTION_EFFECTS: [string, string][] = [
-  ['heal', 'healing'],
-  ['extra_heal', 'extra healing'],
-  ['poison', 'poison'],
-  ['blindness', 'blindness'],
-  ['confusion', 'confusion'],
-  ['gain_str', 'gain strength'],
-  ['restore_str', 'restore strength'],
-  ['see_invisible', 'see invisible'],
-  ['raise_level', 'raise level'],
-  ['haste_self', 'haste self'],
-  ['monster_det', 'monster detection'],
-  ['hallucination', 'hallucination'],
+interface EffectDef {
+  key: string;
+  name: string;
+  prob: number;
+}
+
+const POTION_EFFECTS: EffectDef[] = [
+  { key: 'confusion', name: 'confusion', prob: 7 },
+  { key: 'hallucination', name: 'hallucination', prob: 8 },
+  { key: 'poison', name: 'poison', prob: 8 },
+  { key: 'gain_str', name: 'gain strength', prob: 13 },
+  { key: 'see_invisible', name: 'see invisible', prob: 3 },
+  { key: 'heal', name: 'healing', prob: 13 },
+  { key: 'monster_det', name: 'monster detection', prob: 6 },
+  { key: 'magic_det', name: 'magic detection', prob: 6 },
+  { key: 'raise_level', name: 'raise level', prob: 2 },
+  { key: 'extra_heal', name: 'extra healing', prob: 5 },
+  { key: 'haste_self', name: 'haste self', prob: 5 },
+  { key: 'restore_str', name: 'restore strength', prob: 13 },
+  { key: 'blindness', name: 'blindness', prob: 5 },
+  { key: 'levitation', name: 'levitation', prob: 6 },
 ];
 
 const POTION_COLORS = [
@@ -213,9 +262,9 @@ export class PotionRegistry {
   constructor() {
     const colours = [...POTION_COLORS];
     rng.shuffle(colours);
-    POTION_EFFECTS.forEach(([keyName], i) => {
-      this.effectToColor[keyName] = colours[i % colours.length];
-      this.identifiedMap[keyName] = false;
+    POTION_EFFECTS.forEach(({ key }, i) => {
+      this.effectToColor[key] = colours[i % colours.length];
+      this.identifiedMap[key] = false;
     });
   }
 
@@ -232,8 +281,8 @@ export class PotionRegistry {
   }
 
   trueName(key: string): string {
-    for (const [k, nm] of POTION_EFFECTS) if (k === key) return `potion of ${nm}`;
-    return 'unknown potion';
+    const e = POTION_EFFECTS.find((p) => p.key === key);
+    return e ? `potion of ${e.name}` : 'unknown potion';
   }
 }
 
@@ -269,8 +318,8 @@ export class Potion extends Item {
       return `You feel much better!  (healed ${gained} HP)`;
     }
     if (key === 'poison') {
-      player.strCur = Math.max(1, player.strCur - rng.randint(1, 3));
-      return 'You feel very sick!';
+      if (player.reduceStr(rng.randint(1, 3))) return 'You feel very sick!';
+      return 'You feel momentarily sick.';
     }
     if (key === 'blindness') {
       player.blinded = BLIND_TURNS;
@@ -305,9 +354,17 @@ export class Potion extends Item {
       engine.monsterDetectionTurns = 25;
       return 'You sense the presence of monsters.';
     }
+    if (key === 'magic_det') {
+      const n = engine.detectItems((it) => !(it instanceof Gold));
+      return n > 0 ? 'You sense the presence of magic.' : 'You sense no magic.';
+    }
     if (key === 'hallucination') {
       player.hallucinating = HALLUC_TURNS;
       return 'Oh wow, everything looks so different!';
+    }
+    if (key === 'levitation') {
+      player.levitating = 30;
+      return 'You start to float in the air.';
     }
     return 'Nothing happens.';
   }
@@ -317,18 +374,21 @@ export class Potion extends Item {
 // Scroll  (unknown label until identified)
 // ---------------------------------------------------------------------------
 
-const SCROLL_EFFECTS: [string, string][] = [
-  ['identify', 'identify'],
-  ['magic_map', 'magic mapping'],
-  ['hold_monster', 'hold monster'],
-  ['sleep', 'sleep'],
-  ['teleport', 'teleportation'],
-  ['ench_weapon', 'enchant weapon'],
-  ['ench_armor', 'enchant armor'],
-  ['scare_monster', 'scare monster'],
-  ['remove_curse', 'remove curse'],
-  ['create_monster', 'create monster'],
-  ['aggravate', 'aggravate monster'],
+const SCROLL_EFFECTS: EffectDef[] = [
+  { key: 'identify', name: 'identify', prob: 43 }, // five identify variants merged
+  { key: 'magic_map', name: 'magic mapping', prob: 4 },
+  { key: 'hold_monster', name: 'hold monster', prob: 2 },
+  { key: 'sleep', name: 'sleep', prob: 3 },
+  { key: 'ench_armor', name: 'enchant armor', prob: 7 },
+  { key: 'scare_monster', name: 'scare monster', prob: 3 },
+  { key: 'food_detect', name: 'food detection', prob: 2 },
+  { key: 'teleport', name: 'teleportation', prob: 5 },
+  { key: 'ench_weapon', name: 'enchant weapon', prob: 8 },
+  { key: 'create_monster', name: 'create monster', prob: 4 },
+  { key: 'remove_curse', name: 'remove curse', prob: 7 },
+  { key: 'aggravate', name: 'aggravate monster', prob: 3 },
+  { key: 'protect_armor', name: 'protect armor', prob: 2 },
+  { key: 'monster_conf', name: 'monster confusion', prob: 7 },
 ];
 
 const SCROLL_SYLLABLES = [
@@ -350,9 +410,9 @@ export class ScrollRegistry {
       for (let j = 0; j < n; j++) parts.push(syllables[(i * 3 + j) % syllables.length]);
       labels.push(parts.join(' '));
     }
-    SCROLL_EFFECTS.forEach(([keyName], i) => {
-      this.effectToLabel[keyName] = labels[i];
-      this.identifiedMap[keyName] = false;
+    SCROLL_EFFECTS.forEach(({ key }, i) => {
+      this.effectToLabel[key] = labels[i];
+      this.identifiedMap[key] = false;
     });
   }
 
@@ -369,8 +429,8 @@ export class ScrollRegistry {
   }
 
   trueName(key: string): string {
-    for (const [k, nm] of SCROLL_EFFECTS) if (k === key) return `scroll of ${nm}`;
-    return 'unknown scroll';
+    const e = SCROLL_EFFECTS.find((s) => s.key === key);
+    return e ? `scroll of ${e.name}` : 'unknown scroll';
   }
 }
 
@@ -408,6 +468,10 @@ export class Scroll extends Item {
       for (const m of engine.monsters) m.sleeping = rng.randint(5, 15);
       return 'The monsters fall asleep.';
     }
+    if (key === 'monster_conf') {
+      player.confusingTouch = true;
+      return 'Your hands begin to glow red.';
+    }
     if (key === 'teleport') {
       engine.teleportPlayer();
       return 'You feel dizzy and...';
@@ -429,21 +493,32 @@ export class Scroll extends Item {
       }
       return 'You have no armor to enchant.';
     }
+    if (key === 'protect_armor') {
+      if (player.armor) {
+        (player.armor as Armor).protected = true;
+        return `Your ${player.armor.name} is covered by a shimmering gold shield.`;
+      }
+      return 'You have no armor to protect.';
+    }
     if (key === 'scare_monster') {
       for (const m of engine.monsters) m.scared = (m.scared || 0) + 20;
       return 'The monsters flee!';
     }
+    if (key === 'food_detect') {
+      const n = engine.detectItems((it) => it instanceof Food);
+      return n > 0 ? 'Your nose tingles with the smell of food.' : 'You smell no food.';
+    }
     if (key === 'remove_curse') {
       for (const item of player.inventory) item.cursed = false;
-      return 'All your items are uncursed.';
+      return 'You feel as if somebody is watching over you.';
     }
     if (key === 'create_monster') {
       engine.spawnMonsterNear(player.x, player.y);
-      return 'You hear a strange noise...';
+      return 'You hear a faint cry of anguish in the distance.';
     }
     if (key === 'aggravate') {
       for (const m of engine.monsters) m.aggravated = true;
-      return 'You hear the monsters getting angry!';
+      return 'You hear a high-pitched humming noise.';
     }
     return 'Nothing happens.';
   }
@@ -481,33 +556,84 @@ export class Food extends Item {
 }
 
 // ---------------------------------------------------------------------------
-// Ring
+// Ring  (worn; ongoing effects handled by Player)
 // ---------------------------------------------------------------------------
 
-const RING_EFFECTS: [string, string, number][] = [
-  ['protection', 'protection', 0],
-  ['add_str', 'add strength', 0],
-  ['sustain_str', 'sustain strength', 0],
-  ['searching', 'searching', 0],
-  ['see_invisible', 'see invisible', 0],
-  ['regeneration', 'regeneration', 0],
-  ['aggravate', 'aggravate monster', 0],
-  ['teleport', 'teleportation', 0],
+interface RingDef {
+  key: string;
+  name: string;
+  prob: number;
+  value: number;
+  magnitude: boolean; // has a [+n] bonus
+}
+
+const RING_EFFECTS: RingDef[] = [
+  { key: 'protection', name: 'protection', prob: 9, value: 400, magnitude: true },
+  { key: 'add_str', name: 'add strength', prob: 9, value: 400, magnitude: true },
+  { key: 'sustain_str', name: 'sustain strength', prob: 5, value: 280, magnitude: false },
+  { key: 'searching', name: 'searching', prob: 10, value: 420, magnitude: false },
+  { key: 'see_invisible', name: 'see invisible', prob: 10, value: 310, magnitude: false },
+  { key: 'adornment', name: 'adornment', prob: 1, value: 10, magnitude: false },
+  { key: 'aggravate', name: 'aggravate monster', prob: 10, value: 10, magnitude: false },
+  { key: 'dexterity', name: 'dexterity', prob: 8, value: 440, magnitude: true },
+  { key: 'increase_damage', name: 'increase damage', prob: 8, value: 400, magnitude: true },
+  { key: 'regeneration', name: 'regeneration', prob: 4, value: 460, magnitude: false },
+  { key: 'slow_digestion', name: 'slow digestion', prob: 9, value: 240, magnitude: false },
+  { key: 'teleport', name: 'teleportation', prob: 5, value: 30, magnitude: false },
+  { key: 'stealth', name: 'stealth', prob: 7, value: 470, magnitude: false },
+  { key: 'maintain_armor', name: 'maintain armor', prob: 5, value: 380, magnitude: false },
 ];
 
 export class Ring extends Item {
   kind = 'ring';
   effectKey: string;
+  bonus: number; // magnitude for protection/add_str/dexterity/increase_damage
+  worn = false;
 
-  constructor(x: number, y: number, effectIdx?: number) {
-    const idx = effectIdx ?? rng.randrange(RING_EFFECTS.length);
-    const [key, nm, val] = RING_EFFECTS[idx];
-    super(x, y, '=', RING_COLOR, `ring of ${nm}`, 1, val);
-    this.effectKey = key;
+  constructor(x: number, y: number, effectIdx?: number, bonus?: number, cursed = false) {
+    const idx = effectIdx ?? RING_EFFECTS.indexOf(pickByProb(RING_EFFECTS));
+    const def = RING_EFFECTS[idx];
+    super(x, y, '=', RING_COLOR, `ring of ${def.name}`, 1, def.value);
+    this.effectKey = def.key;
+    if (bonus !== undefined) {
+      this.bonus = bonus;
+    } else if (def.magnitude) {
+      // +1..+3, with a chance of a cursed negative ring.
+      this.bonus = rng.random() < 0.25 ? -rng.randint(1, 2) : rng.randint(1, 3);
+    } else {
+      this.bonus = 0;
+    }
+    this.cursed = cursed || this.bonus < 0;
+    this.identified = false; // bonus hidden until worn
   }
 
-  use(_engine: GameEngine): string {
-    return `You slip on the ${this.name}.`;
+  displayName(): string {
+    let nm = this.name;
+    if (this.identified) {
+      const def = RING_EFFECTS.find((r) => r.key === this.effectKey);
+      if (def?.magnitude) nm += ` [${this.bonus >= 0 ? '+' : ''}${this.bonus}]`;
+    }
+    if (this.worn) nm += ' (on hand)';
+    return nm;
+  }
+
+  use(engine: GameEngine): string {
+    const player = engine.player;
+    if (this.worn) {
+      if (this.cursed) return `You can't remove the ${this.name} — it appears to be stuck!`;
+      this.worn = false;
+      player.rings = player.rings.filter((r) => r !== this);
+      return `You remove the ${this.name}.`;
+    }
+    if (player.rings.length >= 2) return 'You already wear two rings.';
+    player.rings.push(this);
+    this.worn = true;
+    this.identified = true;
+    if (this.effectKey === 'aggravate') {
+      for (const m of engine.monsters) m.aggravated = true;
+      return `You put on the ${this.name}.  You hear a faint humming.`;
+    }
+    return `You are now wearing the ${this.name}.`;
   }
 }
 
@@ -515,19 +641,27 @@ export class Ring extends Item {
 // Wand / Staff
 // ---------------------------------------------------------------------------
 
-const WAND_EFFECTS: [string, string, number][] = [
-  ['magic_missile', 'magic missile', 10],
-  ['slow_monster', 'slow monster', 10],
-  ['sleep_monster', 'sleep monster', 10],
-  ['teleport_to', 'teleport to', 5],
-  ['confusion', 'confusion', 10],
-  ['invisibility', 'invisibility', 8],
-  ['cancellation', 'cancellation', 8],
-  ['lightning', 'lightning', 3],
-  ['fire', 'fire', 3],
-  ['cold', 'cold', 3],
-  ['drain_life', 'drain life', 10],
-  ['polymorph', 'polymorph', 8],
+interface WandDef {
+  key: string;
+  name: string;
+  prob: number;
+}
+
+const WAND_EFFECTS: WandDef[] = [
+  { key: 'light', name: 'light', prob: 12 },
+  { key: 'invisibility', name: 'invisibility', prob: 6 },
+  { key: 'lightning', name: 'lightning', prob: 3 },
+  { key: 'fire', name: 'fire', prob: 3 },
+  { key: 'cold', name: 'cold', prob: 3 },
+  { key: 'polymorph', name: 'polymorph', prob: 15 },
+  { key: 'magic_missile', name: 'magic missile', prob: 10 },
+  { key: 'haste_monster', name: 'haste monster', prob: 10 },
+  { key: 'slow_monster', name: 'slow monster', prob: 11 },
+  { key: 'drain_life', name: 'drain life', prob: 9 },
+  { key: 'nothing', name: 'nothing', prob: 1 },
+  { key: 'teleport_away', name: 'teleport away', prob: 6 },
+  { key: 'teleport_to', name: 'teleport to', prob: 6 },
+  { key: 'cancellation', name: 'cancellation', prob: 5 },
 ];
 
 export class Wand extends Item {
@@ -536,11 +670,11 @@ export class Wand extends Item {
   charges: number;
 
   constructor(x: number, y: number, effectIdx?: number) {
-    const idx = effectIdx ?? rng.randrange(WAND_EFFECTS.length);
-    const [key, nm, charges] = WAND_EFFECTS[idx];
-    super(x, y, '/', WAND_COLOR, `wand of ${nm}`, 5, 10);
-    this.effectKey = key;
-    this.charges = rng.randint(3, charges);
+    const idx = effectIdx ?? WAND_EFFECTS.indexOf(pickByProb(WAND_EFFECTS));
+    const def = WAND_EFFECTS[idx];
+    super(x, y, '/', WAND_COLOR, `wand of ${def.name}`, 5, 10);
+    this.effectKey = def.key;
+    this.charges = rng.randint(3, 7);
   }
 
   displayName(): string {
@@ -548,7 +682,7 @@ export class Wand extends Item {
   }
 
   use(engine: GameEngine): string {
-    if (this.charges <= 0) return 'The wand is empty.';
+    if (this.charges <= 0) return 'The wand has no charges left.';
     this.charges -= 1;
     return engine.zapWand(this);
   }
@@ -572,8 +706,19 @@ export class Amulet extends Item {
 }
 
 // ---------------------------------------------------------------------------
-// Item factory
+// Item factory  (object type distribution from extern.c things[])
 // ---------------------------------------------------------------------------
+
+const CATEGORY_PROBS = [26, 36, 16, 7, 7, 4, 4]; // potion, scroll, food, weapon, armor, ring, wand
+const CATEGORIES = ['potion', 'scroll', 'food', 'weapon', 'armor', 'ring', 'wand'] as const;
+
+function maybeEnchant(): { enchant: number; cursed: boolean } {
+  if (rng.random() < 0.15) {
+    if (rng.random() < 0.5) return { enchant: rng.randint(1, 3), cursed: false };
+    return { enchant: -rng.randint(1, 3), cursed: true };
+  }
+  return { enchant: 0, cursed: false };
+}
 
 export function randomItem(
   x: number,
@@ -582,56 +727,24 @@ export function randomItem(
   potionReg: PotionRegistry,
   scrollReg: ScrollRegistry,
 ): Item {
-  const categories = ['gold', 'food', 'weapon', 'armor', 'potion', 'scroll', 'ring', 'wand'];
-  const catWeights = [20, 15, 15, 15, 15, 12, 4, 4];
-  const category = rng.choices(categories, catWeights, 1)[0];
-
-  if (category === 'gold') {
-    const amount = rng.randint(1, 50 + dungeonLevel * 10);
-    return new Gold(x, y, amount);
+  // Gold is placed independently in the original; we fold it in at ~1/3.
+  if (rng.random() < 0.34) {
+    return new Gold(x, y, rng.randint(2, 50 + dungeonLevel * 10));
   }
+
+  const category = CATEGORIES[pickIndexByProb(CATEGORY_PROBS)];
+
   if (category === 'food') return new Food(x, y);
-
   if (category === 'weapon') {
-    const maxIdx = Math.min(WEAPONS.length - 1, Math.floor(dungeonLevel / 3) + 3);
-    const idx = rng.randint(0, maxIdx);
-    let enchant = 0;
-    let cursed = false;
-    if (rng.random() < 0.15) {
-      if (rng.random() < 0.5) enchant = rng.randint(1, 3);
-      else {
-        enchant = -rng.randint(1, 3);
-        cursed = true;
-      }
-    }
-    return new Weapon(x, y, idx, enchant, cursed);
+    const { enchant, cursed } = maybeEnchant();
+    return new Weapon(x, y, undefined, enchant, cursed);
   }
-
   if (category === 'armor') {
-    const maxIdx = Math.min(ARMORS.length - 1, Math.floor(dungeonLevel / 3) + 2);
-    const idx = rng.randint(0, maxIdx);
-    let enchant = 0;
-    let cursed = false;
-    if (rng.random() < 0.15) {
-      if (rng.random() < 0.5) enchant = rng.randint(1, 3);
-      else {
-        enchant = -rng.randint(1, 3);
-        cursed = true;
-      }
-    }
-    return new Armor(x, y, idx, enchant, cursed);
+    const { enchant, cursed } = maybeEnchant();
+    return new Armor(x, y, undefined, enchant, cursed);
   }
-
-  if (category === 'potion') {
-    const key = rng.choice(POTION_EFFECTS.map((e) => e[0]));
-    return new Potion(x, y, key, potionReg);
-  }
-
-  if (category === 'scroll') {
-    const key = rng.choice(SCROLL_EFFECTS.map((e) => e[0]));
-    return new Scroll(x, y, key, scrollReg);
-  }
-
+  if (category === 'potion') return new Potion(x, y, pickByProb(POTION_EFFECTS).key, potionReg);
+  if (category === 'scroll') return new Scroll(x, y, pickByProb(SCROLL_EFFECTS).key, scrollReg);
   if (category === 'ring') return new Ring(x, y);
   if (category === 'wand') return new Wand(x, y);
 

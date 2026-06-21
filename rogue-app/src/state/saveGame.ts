@@ -47,10 +47,15 @@ function serializeItem(it: Item): any {
   };
   if (it instanceof Gold) base.amount = it.amount;
   if (it instanceof Weapon || it instanceof Armor) base.enchant = (it as any).enchant;
+  if (it instanceof Armor) base.protectedArmor = it.protected;
   if (it instanceof Potion) base.effectKey = it.effectKey;
   if (it instanceof Scroll) base.effectKey = it.effectKey;
   if (it instanceof Food) base.nutrition = it.nutrition;
-  if (it instanceof Ring) base.effectKey = it.effectKey;
+  if (it instanceof Ring) {
+    base.effectKey = it.effectKey;
+    base.bonus = it.bonus;
+    base.worn = it.worn;
+  }
   if (it instanceof Wand) {
     base.effectKey = it.effectKey;
     base.charges = it.charges;
@@ -109,9 +114,12 @@ export function serializeEngine(e: GameEngine): string {
       hallucinating: e.player.hallucinating,
       seeInvisible: e.player.seeInvisible,
       hasAmulet: e.player.hasAmulet,
+      levitating: e.player.levitating,
+      confusingTouch: e.player.confusingTouch,
       inventory: e.player.inventory.map(serializeItem),
       weaponIdx: e.player.weapon ? e.player.inventory.indexOf(e.player.weapon) : -1,
       armorIdx: e.player.armor ? e.player.inventory.indexOf(e.player.armor) : -1,
+      ringIdxs: e.player.rings.map((r) => e.player.inventory.indexOf(r)),
     },
     monsters: e.monsters.map((m) => ({
       letter: m.template.letter,
@@ -161,6 +169,8 @@ function rebuildItem(d: any, potionReg: PotionRegistry, scrollReg: ScrollRegistr
     case 'ring':
       it = new Ring(d.x, d.y, 0);
       (it as Ring).effectKey = d.effectKey;
+      (it as Ring).bonus = d.bonus ?? 0;
+      (it as Ring).worn = d.worn ?? false;
       break;
     case 'wand':
       it = new Wand(d.x, d.y, 0);
@@ -180,6 +190,7 @@ function rebuildItem(d: any, potionReg: PotionRegistry, scrollReg: ScrollRegistr
   it.acBonus = d.acBonus;
   it.damageDice = d.damageDice;
   it.damageBonus = d.damageBonus;
+  if (it instanceof Armor) it.protected = d.protectedArmor ?? false;
   return it;
 }
 
@@ -238,10 +249,13 @@ export function deserializeEngine(json: string): GameEngine {
     hallucinating: d.player.hallucinating,
     seeInvisible: d.player.seeInvisible,
     hasAmulet: d.player.hasAmulet,
+    levitating: d.player.levitating ?? 0,
+    confusingTouch: d.player.confusingTouch ?? false,
   });
   p.inventory = d.player.inventory.map((id: any) => rebuildItem(id, e.potionReg, e.scrollReg));
   p.weapon = d.player.weaponIdx >= 0 ? p.inventory[d.player.weaponIdx] : null;
   p.armor = d.player.armorIdx >= 0 ? p.inventory[d.player.armorIdx] : null;
+  p.rings = (d.player.ringIdxs ?? []).map((i: number) => p.inventory[i]).filter(Boolean) as Ring[];
   p.recalcAc();
   e.player = p;
 

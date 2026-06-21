@@ -143,7 +143,9 @@ export class GameEngine {
   canMonsterSeePlayer(monster: Monster): boolean {
     const p = this.player;
     const dist = Math.max(Math.abs(monster.x - p.x), Math.abs(monster.y - p.y));
-    if (dist > 8) return false;
+    // A ring of stealth keeps the hero unnoticed until much closer.
+    const range = p.hasRing('stealth') ? 3 : 8;
+    if (dist > range) return false;
     return this.dungeon.visible[monster.y][monster.x];
   }
 
@@ -309,6 +311,12 @@ export class GameEngine {
     target.takeDamage(damage);
     this.addMessage(`You hit the ${target.name} for ${damage} damage!`);
 
+    if (this.player.confusingTouch && target.alive) {
+      target.confused = CONFUSED_TURNS;
+      this.player.confusingTouch = false;
+      this.addMessage(`The ${target.name} looks confused.`);
+    }
+
     if (!target.alive) {
       this.addMessage(`You killed the ${target.name}!`);
       this.removeMonster(target);
@@ -351,6 +359,11 @@ export class GameEngine {
     }
 
     if (this.monsterDetectionTurns > 0) this.monsterDetectionTurns -= 1;
+
+    // A ring of teleportation occasionally whisks the hero away.
+    if (this.player.hasRing('teleport') && rng.random() < 0.02) {
+      this.teleportPlayer();
+    }
 
     this.processMonsters();
 
@@ -431,67 +444,108 @@ export class GameEngine {
     }
   }
 
+  /** Mark matching items as explored (potions of magic/food detection). */
+  detectItems(pred: (it: Item) => boolean): number {
+    let n = 0;
+    for (const it of this.items) {
+      if (pred(it)) {
+        this.dungeon.explored[it.y][it.x] = true;
+        n += 1;
+      }
+    }
+    return n;
+  }
+
+  /** Light the room (or immediate area) the hero stands in. */
+  lightArea(): void {
+    const room = this.dungeon.inRoom(this.player.x, this.player.y);
+    if (room) {
+      room.dark = false;
+      this.dungeon.computeFov(this.player.x, this.player.y);
+    }
+  }
+
+  private nearestVisibleMonster(): Monster | null {
+    const p = this.player;
+    const visible = this.monsters.filter((m) => m.alive && this.dungeon.visible[m.y][m.x]);
+    if (visible.length === 0) return null;
+    return visible.reduce((best, m) =>
+      Math.abs(m.x - p.x) + Math.abs(m.y - p.y) < Math.abs(best.x - p.x) + Math.abs(best.y - p.y) ? m : best,
+    );
+  }
+
   zapWand(wand: Wand): string {
     const p = this.player;
     const key = wand.effectKey;
-    const visibleMonsters = this.monsters.filter((m) => m.alive && this.dungeon.visible[m.y][m.x]);
-    if (visibleMonsters.length === 0 && !['teleport_to', 'lightning', 'fire', 'cold'].includes(key)) {
-      return 'The wand discharges harmlessly.';
-    }
 
-    let target: Monster | null = null;
-    if (visibleMonsters.length > 0) {
-      target = visibleMonsters.reduce((best, m) =>
-        Math.abs(m.x - p.x) + Math.abs(m.y - p.y) < Math.abs(best.x - p.x) + Math.abs(best.y - p.y) ? m : best,
-      );
-    }
-
-    if (key === 'magic_missile' && target) {
-      const dmg = rng.randint(1, 4) + 1;
-      target.takeDamage(dmg);
-      if (!target.alive) {
-        this.removeMonster(target);
-        this.player.gainExp(target.xpValue);
-        return `The bolt kills the ${target.name}!`;
-      }
-      return `The magic missile hits the ${target.name} for ${dmg} damage!`;
-    }
-    if (key === 'slow_monster' && target) {
-      target.speed = Math.max(1, target.speed - 1);
-      return `The ${target.name} slows down.`;
-    }
-    if (key === 'sleep_monster' && target) {
-      target.sleeping = rng.randint(10, 20);
-      return `The ${target.name} falls asleep.`;
-    }
-    if (key === 'drain_life' && target) {
-      const dmg = Math.floor(p.hp / 2);
-      p.takeDamage(dmg);
-      target.takeDamage(dmg * 2);
-      if (!target.alive) {
-        this.removeMonster(target);
-        return `The life drain kills the ${target.name}!`;
-      }
-      return `You drain life — the ${target.name} takes ${dmg * 2} damage.`;
-    }
-    if (key === 'confusion' && target) {
-      target.confused = CONFUSED_TURNS;
-      return `The ${target.name} looks confused.`;
+    // Wands that need no monster target.
+    if (key === 'nothing') return 'The wand does nothing.';
+    if (key === 'light') {
+      this.lightArea();
+      return 'The area is lit by a shimmering light.';
     }
     if (key === 'teleport_to') {
       this.teleportPlayer();
-      return 'You feel dizzy...';
+      return 'You feel dizzy for a moment...';
     }
-    if (['lightning', 'fire', 'cold'].includes(key) && target) {
+
+    const target = this.nearestVisibleMonster();
+    if (!target) return 'The wand discharges harmlessly into the darkness.';
+
+    const killed = (verb: string): string => {
+      this.removeMonster(target);
+      const lvl = p.gainExp(target.xpValue);
+      if (lvl) this.addMessage(lvl);
+      return `The ${verb} kills the ${target.name}!`;
+    };
+
+    if (key === 'magic_missile') {
+      const dmg = rng.randint(1, 4) + 1;
+      target.takeDamage(dmg);
+      if (!target.alive) return killed('bolt');
+      return `The magic missile hits the ${target.name} for ${dmg} damage!`;
+    }
+    if (key === 'lightning' || key === 'fire' || key === 'cold') {
       const base: Record<string, number> = { lightning: 6, fire: 8, cold: 5 };
       let dmg = 0;
-      for (let i = 0; i < 4; i++) dmg += rng.randint(1, base[key]);
+      for (let i = 0; i < 6; i++) dmg += rng.randint(1, base[key]); // ~6d6 bolt
       target.takeDamage(dmg);
-      if (!target.alive) {
-        this.removeMonster(target);
-        return `The ${key} kills the ${target.name}!`;
-      }
-      return `The ${key} hits the ${target.name} for ${dmg} damage!`;
+      if (!target.alive) return killed(key);
+      return `The bolt of ${key} hits the ${target.name} for ${dmg} damage!`;
+    }
+    if (key === 'drain_life') {
+      const dmg = Math.max(1, Math.floor(p.hp / 2));
+      p.takeDamage(dmg);
+      target.takeDamage(dmg * 2);
+      if (!target.alive) return killed('life drain');
+      return `You drain life — the ${target.name} takes ${dmg * 2} damage.`;
+    }
+    if (key === 'slow_monster') {
+      target.speed = Math.max(1, target.speed - 1);
+      return `The ${target.name} slows down.`;
+    }
+    if (key === 'haste_monster') {
+      target.speed += 1;
+      return `The ${target.name} speeds up!`;
+    }
+    if (key === 'teleport_away') {
+      this.teleportMonster(target);
+      return `The ${target.name} vanishes!`;
+    }
+    if (key === 'invisibility') {
+      target.invisible = true;
+      return `The ${target.name} fades from view.`;
+    }
+    if (key === 'cancellation') {
+      target.flags.clear();
+      target.invisible = false;
+      return `The ${target.name} is stripped of its powers.`;
+    }
+    if (key === 'polymorph') {
+      const [mx, my] = [target.x, target.y];
+      this.removeMonster(target);
+      this.monsters.push(spawnMonster(mx, my, this.dungeonLevel));
+      return `The ${target.name} turns into something else!`;
     }
     return 'The wand discharges.';
   }
@@ -564,7 +618,7 @@ export class GameEngine {
       if (p.hallucinating > 0 && visible) {
         const ch = LETTERS[rng.randrange(LETTERS.length)];
         monsterData.push([m.x, m.y, ch, m.color, visible]);
-      } else if (m.invisible && !p.seeInvisible) {
+      } else if (m.invisible && !p.canSeeInvisible) {
         // don't show invisible monsters
       } else {
         monsterData.push([m.x, m.y, m.char, m.color, visible]);
