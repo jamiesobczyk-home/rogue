@@ -76,7 +76,15 @@ export function serializeEngine(e: GameEngine): string {
       tiles: e.dungeon.tiles,
       visible: e.dungeon.visible,
       explored: e.dungeon.explored,
-      rooms: e.dungeon.rooms.map((r) => ({ x: r.x, y: r.y, w: r.w, h: r.h })),
+      rooms: e.dungeon.rooms.map((r) => ({
+        x: r.x,
+        y: r.y,
+        w: r.w,
+        h: r.h,
+        gone: r.gone,
+        dark: r.dark,
+        maze: r.maze,
+      })),
       playerStart: e.dungeon.playerStart,
       stairsDown: e.dungeon.stairsDown,
       stairsUp: e.dungeon.stairsUp,
@@ -200,8 +208,14 @@ export function deserializeEngine(json: string): GameEngine {
   dn.playerStart = d.dungeon.playerStart;
   dn.stairsDown = d.dungeon.stairsDown;
   dn.stairsUp = d.dungeon.stairsUp;
-  // Rooms need real Rect instances for inRoom()/FOV.
-  dn.rooms = d.dungeon.rooms.map((r: any) => new Rect(r.x, r.y, r.w, r.h));
+  // Rooms need real Rect instances for inRoom()/FOV, including layout flags.
+  dn.rooms = d.dungeon.rooms.map((r: any) => {
+    const rect = new Rect(r.x, r.y, r.w, r.h);
+    rect.gone = r.gone ?? false;
+    rect.dark = r.dark ?? false;
+    rect.maze = r.maze ?? false;
+    return rect;
+  });
   e.dungeon = dn;
 
   // Player.

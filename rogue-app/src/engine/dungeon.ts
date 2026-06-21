@@ -1,11 +1,15 @@
 // Procedural dungeon generation and field-of-view.
+//
+// Levels follow the original Rogue 5.4.4 layout (rooms.c / passages.c): the map
+// is a fixed 3x3 grid of nine cells, one room per cell. Some cells become
+// "gone" rooms (a bare corridor junction), and deeper levels grow more "dark"
+// rooms. Rooms are joined by a spanning tree of grid-adjacent connections (plus
+// a few extra cycles), with doors where corridors meet room walls.
 
 import {
   MAP_WIDTH,
   MAP_HEIGHT,
   MAX_ROOMS,
-  MIN_ROOM_SIZE,
-  MAX_ROOM_SIZE,
   TILE_VOID,
   TILE_FLOOR,
   TILE_WALL_H,
@@ -27,6 +31,11 @@ const key = (x: number, y: number) => `${x},${y}`;
 // ---------------------------------------------------------------------------
 
 export class Rect {
+  // Layout flags from the original generator.
+  gone = false; // ISGONE — a bare corridor junction, no walls/floor
+  dark = false; // ISDARK — only the hero's immediate surroundings are lit
+  maze = false; // ISMAZE — reserved (not yet carved)
+
   constructor(public x: number, public y: number, public w: number, public h: number) {}
 
   get x1(): number {
@@ -115,6 +124,7 @@ export class Dungeon {
 
   inRoom(x: number, y: number): Rect | null {
     for (const r of this.rooms) {
+      if (r.gone) continue;
       if (r.x1 < x && x < r.x2 && r.y1 < y && y < r.y2) return r;
     }
     return null;
@@ -126,7 +136,8 @@ export class Dungeon {
     for (let y = 0; y < MAP_HEIGHT; y++) for (let x = 0; x < MAP_WIDTH; x++) this.visible[y][x] = false;
 
     const room = this.inRoom(px, py);
-    if (room) {
+    if (room && !room.dark) {
+      // A lit room reveals its whole interior plus adjacent passages/doors.
       for (let y = room.y1; y <= room.y2; y++) {
         for (let x = room.x1; x <= room.x2; x++) {
           this.visible[y][x] = true;
@@ -145,6 +156,7 @@ export class Dungeon {
         }
       }
     } else {
+      // Corridors and dark rooms reveal only the hero's immediate surroundings.
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           const nx = px + dx;
@@ -164,30 +176,50 @@ export class Dungeon {
   // -- Generation ----------------------------------------------------
 
   private generate(): void {
-    this.placeRooms();
+    this.gridRooms();
     this.connectRooms();
     this.placeStairs();
     this.chooseSpawns();
   }
 
-  private placeRooms(): void {
-    let attempts = 0;
-    while (this.rooms.length < MAX_ROOMS && attempts < 200) {
-      attempts += 1;
-      const w = this.rng.randint(MIN_ROOM_SIZE, MAX_ROOM_SIZE);
-      const h = this.rng.randint(MIN_ROOM_SIZE, MAX_ROOM_SIZE);
-      const x = this.rng.randint(1, MAP_WIDTH - w - 2);
-      const y = this.rng.randint(1, MAP_HEIGHT - h - 2);
-      const room = new Rect(x, y, w, h);
+  /** One room per cell of a 3x3 grid (rooms.c do_rooms). */
+  private gridRooms(): void {
+    const bsx = Math.floor(MAP_WIDTH / 3);
+    const bsy = Math.floor(MAP_HEIGHT / 3);
 
-      if (this.rooms.some((r) => room.intersects(r))) continue;
+    // rnd(4) cells become "gone" rooms — bare corridor junctions.
+    const goneCount = this.rng.randint(0, 3);
+    const goneSet = new Set<number>();
+    while (goneSet.size < goneCount) goneSet.add(this.rng.randrange(MAX_ROOMS));
 
-      this.carveRoom(room);
-      this.rooms.push(room);
-    }
+    for (let i = 0; i < MAX_ROOMS; i++) {
+      const topX = (i % 3) * bsx + 1;
+      const topY = Math.floor(i / 3) * bsy;
 
-    if (this.rooms.length === 0) {
-      const room = new Rect(5, 5, 20, 10);
+      if (goneSet.has(i)) {
+        let px = 0;
+        let py = 0;
+        do {
+          px = topX + 1 + this.rng.randrange(Math.max(1, bsx - 2));
+          py = topY + 1 + this.rng.randrange(Math.max(1, bsy - 2));
+        } while (py < 1 || py > MAP_HEIGHT - 2);
+        const gone = new Rect(px, py, 1, 1);
+        gone.gone = true;
+        this.rooms.push(gone);
+        continue;
+      }
+
+      let maxW = 4 + this.rng.randrange(Math.max(1, bsx - 4));
+      let maxH = 4 + this.rng.randrange(Math.max(1, bsy - 4));
+      maxW = Math.min(maxW, bsx - 1);
+      maxH = Math.min(maxH, bsy - 1);
+
+      const posX = topX + this.rng.randrange(Math.max(1, bsx - maxW));
+      let posY = topY + this.rng.randrange(Math.max(1, bsy - maxH));
+      if (posY < 1) posY = 1; // keep clear of the top status row
+
+      const room = new Rect(posX, posY, maxW, maxH);
+      room.dark = this.rng.randrange(10) < this.level - 1;
       this.carveRoom(room);
       this.rooms.push(room);
     }
@@ -211,61 +243,139 @@ export class Dungeon {
     }
   }
 
+  // -- Passages (passages.c) -----------------------------------------
+
+  /** Grid-adjacent neighbours of room i and the direction to reach them. */
+  private neighbours(i: number): [number, 'r' | 'd'][] {
+    const list: [number, 'r' | 'd'][] = [];
+    if (i % 3 < 2) list.push([i + 1, 'r']);
+    if (i < MAX_ROOMS - 3) list.push([i + 3, 'd']);
+    return list;
+  }
+
   private connectRooms(): void {
-    const sorted = [...this.rooms].sort((a, b) => a.centre[0] - b.centre[0]);
-    for (let i = 0; i < sorted.length - 1; i++) this.carveCorridor(sorted[i], sorted[i + 1]);
-    if (sorted.length > 2) this.carveCorridor(sorted[0], sorted[sorted.length - 1]);
+    const edges: [number, number, 'r' | 'd'][] = [];
+    for (let i = 0; i < MAX_ROOMS; i++) for (const [j, d] of this.neighbours(i)) edges.push([i, j, d]);
+
+    const inGraph = new Array(MAX_ROOMS).fill(false);
+    const connected = new Set<string>();
+
+    // Spanning tree: keep adding an edge that touches exactly one in-graph room.
+    inGraph[this.rng.randrange(MAX_ROOMS)] = true;
+    let guard = 0;
+    while (inGraph.filter(Boolean).length < MAX_ROOMS && guard++ < 500) {
+      const cands = edges.filter(([a, b]) => inGraph[a] !== inGraph[b]);
+      if (cands.length === 0) break;
+      const [a, b, d] = this.rng.choice(cands);
+      this.conn(a, b, d);
+      connected.add(`${a}-${b}`);
+      inGraph[a] = true;
+      inGraph[b] = true;
+    }
+
+    // A few extra connections create loops, like the original.
+    const extra = this.rng.randint(0, 4);
+    for (let k = 0; k < extra; k++) {
+      const avail = edges.filter(([a, b]) => !connected.has(`${a}-${b}`));
+      if (avail.length === 0) break;
+      const [a, b, d] = this.rng.choice(avail);
+      this.conn(a, b, d);
+      connected.add(`${a}-${b}`);
+    }
   }
 
-  private carveCorridor(a: Rect, b: Rect): void {
-    const [ax, ay] = a.centre;
-    const [bx, by] = b.centre;
-    let corner: Pos;
+  /** Carve a corridor (with doors) between two grid-adjacent rooms. */
+  private conn(ai: number, bi: number, dir: 'r' | 'd'): void {
+    const a = this.rooms[ai];
+    const b = this.rooms[bi];
+    const [aDoor, aOut] = this.exitPoint(a, dir, true);
+    const [bDoor, bOut] = this.exitPoint(b, dir, false);
 
-    if (this.rng.random() < 0.5) {
-      this.hcorridor(ax, bx, ay);
-      this.vcorridor(ay, by, bx);
-      corner = [bx, ay];
+    this.placeDoor(a, aDoor);
+    this.placeDoor(b, bDoor);
+
+    if (dir === 'r') this.carvePathH(aOut, bOut);
+    else this.carvePathV(aOut, bOut);
+  }
+
+  /**
+   * Pick the door cell on `room`'s facing wall and the corridor cell just
+   * outside it. `first` is the left/top room of the pair. Gone rooms use their
+   * single point for both.
+   */
+  private exitPoint(room: Rect, dir: 'r' | 'd', first: boolean): [Pos, Pos] {
+    if (room.gone) {
+      const p: Pos = [room.x, room.y];
+      return [p, p];
+    }
+    if (dir === 'r') {
+      const wallX = first ? room.x2 : room.x1;
+      const y = this.rng.randint(room.y1 + 1, room.y2 - 1);
+      return [[wallX, y], [first ? wallX + 1 : wallX - 1, y]];
+    }
+    const wallY = first ? room.y2 : room.y1;
+    const x = this.rng.randint(room.x1 + 1, room.x2 - 1);
+    return [[x, wallY], [x, first ? wallY + 1 : wallY - 1]];
+  }
+
+  private placeDoor(room: Rect, p: Pos): void {
+    if (room.gone) {
+      if (this.tile(p[0], p[1]) === TILE_VOID) this.setTile(p[0], p[1], TILE_CORRIDOR);
     } else {
-      this.vcorridor(ay, by, ax);
-      this.hcorridor(ax, bx, by);
-      corner = [ax, by];
-    }
-
-    const [cx, cy] = corner;
-    if (this.tile(cx, cy) === TILE_VOID) this.setTile(cx, cy, TILE_CORRIDOR);
-  }
-
-  private hcorridor(x1: number, x2: number, y: number): void {
-    for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
-      const t = this.tile(x, y);
-      if (t === TILE_VOID || t === TILE_WALL_H || t === TILE_WALL_V || t === TILE_WALL_C) {
-        if (t === TILE_WALL_H || t === TILE_WALL_V || t === TILE_WALL_C) this.setTile(x, y, TILE_DOOR);
-        else this.setTile(x, y, TILE_CORRIDOR);
-      }
+      this.setTile(p[0], p[1], TILE_DOOR);
     }
   }
 
-  private vcorridor(y1: number, y2: number, x: number): void {
-    for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
-      const t = this.tile(x, y);
-      if (t === TILE_VOID || t === TILE_WALL_H || t === TILE_WALL_V || t === TILE_WALL_C) {
-        if (t === TILE_WALL_H || t === TILE_WALL_V || t === TILE_WALL_C) this.setTile(x, y, TILE_DOOR);
-        else this.setTile(x, y, TILE_CORRIDOR);
-      }
+  /** Corridor cell: void becomes passage, a pierced wall becomes a door. */
+  private passCell(x: number, y: number): void {
+    const t = this.tile(x, y);
+    if (t === TILE_VOID) this.setTile(x, y, TILE_CORRIDOR);
+    else if (t === TILE_WALL_H || t === TILE_WALL_V || t === TILE_WALL_C) this.setTile(x, y, TILE_DOOR);
+  }
+
+  private carvePathH(aOut: Pos, bOut: Pos): void {
+    let [ax, ay] = aOut;
+    let [bx, by] = bOut;
+    if (ax > bx) {
+      [ax, bx] = [bx, ax];
+      [ay, by] = [by, ay];
     }
+    const midX = ax + this.rng.randrange(Math.max(1, bx - ax + 1));
+    this.carveH(ax, midX, ay);
+    this.carveV(ay, by, midX);
+    this.carveH(midX, bx, by);
+  }
+
+  private carvePathV(aOut: Pos, bOut: Pos): void {
+    let [ax, ay] = aOut;
+    let [bx, by] = bOut;
+    if (ay > by) {
+      [ax, bx] = [bx, ax];
+      [ay, by] = [by, ay];
+    }
+    const midY = ay + this.rng.randrange(Math.max(1, by - ay + 1));
+    this.carveV(ay, midY, ax);
+    this.carveH(ax, bx, midY);
+    this.carveV(midY, by, bx);
+  }
+
+  private carveH(x1: number, x2: number, y: number): void {
+    for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) this.passCell(x, y);
+  }
+
+  private carveV(y1: number, y2: number, x: number): void {
+    for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) this.passCell(x, y);
+  }
+
+  // -- Stairs & spawns -----------------------------------------------
+
+  private realRooms(): Rect[] {
+    return this.rooms.filter((r) => !r.gone);
   }
 
   private placeStairs(): void {
-    if (this.rooms.length < 2) {
-      const r = this.rooms[0];
-      const [cx, cy] = r.centre;
-      this.stairsDown = [cx, cy];
-      this.playerStart = [cx - 1, cy];
-      return;
-    }
-
-    const shuffled = [...this.rooms];
+    const real = this.realRooms();
+    const shuffled = [...real];
     this.rng.shuffle(shuffled);
 
     this.playerStart = shuffled[0].randomInterior(this.rng);
@@ -281,7 +391,7 @@ export class Dungeon {
 
   private chooseSpawns(): void {
     const candidates: Pos[] = [];
-    for (const r of this.rooms) {
+    for (const r of this.realRooms()) {
       for (let i = 0; i < r.w * r.h; i++) {
         const pos = r.randomInterior(this.rng);
         const t = this.tile(pos[0], pos[1]);

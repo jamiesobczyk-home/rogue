@@ -40,7 +40,7 @@ shares all the same divergences).
 | **Strength modifiers** | ❌ Invented thresholds | **high** |
 | **Monster stat table** | ⚠️ Wrong names + many wrong stats | **high** |
 | **XP-to-level table** | ❌ Pure doubling, diverges after L7 | medium |
-| **Dungeon generation** | ❌ Random rooms, not 3×3 grid | **high** |
+| ~~Dungeon generation~~ | ✅ 3×3 grid + gone/dark rooms (Phase 4; mazes pending) | resolved |
 | **Player HP regeneration** | ❌ Missing entirely | medium |
 | Item tables (potions/scrolls/rings/wands) | ⚠️ Incomplete, unweighted, rings inert | medium |
 | Weapon table + multi-attack damage | ⚠️ Wrong weapon set, single attack only | medium |
@@ -288,9 +288,24 @@ typechecks clean.
 Add the turn-based heal counter to `endPlayerTurn()` (faster at higher level,
 and via ring of regeneration once rings work).
 
-**Phase 4 — Dungeon generation (high impact, higher risk — largest task).**
-Re-implement `do_rooms()` on the 3×3 grid with gone/dark/maze rooms and a
-neighbor-graph corridor/door pass. Then gate FOV on `ISDARK` (Phase 6).
+**Phase 4 — Dungeon generation (high impact). ✅ DONE (maze rooms deferred).**
+1. ✅ `gridRooms()` lays one room per cell of a fixed 3×3 grid
+   (`bsze = MAP/3`), sized and offset within each cell like `do_rooms()`.
+2. ✅ `rnd(4)` cells become **gone rooms** (bare corridor junctions); rooms turn
+   **dark** when `rnd(10) < level-1`, so deeper levels are darker.
+3. ✅ `connectRooms()` builds a spanning tree over grid-adjacent rooms plus a few
+   extra cycles (passages.c), and `conn()` carves bent corridors placing **doors**
+   where they meet room walls (pierced walls also become doors).
+4. ✅ FOV now gates on `room.dark`: lit rooms reveal fully, dark rooms and
+   corridors reveal only the hero's immediate surroundings.
+5. ✅ Stairs/spawns restricted to real (non-gone) rooms. Room layout flags are
+   serialized so FOV survives save/reload.
+6. ⏳ **Maze rooms** (`rnd(15)==0`) are flagged but not yet carved — deferred as
+   a low-impact refinement.
+
+Tests after Phase 4: **45 green** (added `dungeon.test.ts`: 9-room grid, gone
+rooms, depth-scaled dark rooms, and start→down-stairs connectivity on 50 seeds,
+plus an ASCII level dump). Engine typechecks clean.
 
 **Phase 5 — Item fidelity (medium).**
 1. Add the missing potions/scrolls/wands; split identify scrolls.
