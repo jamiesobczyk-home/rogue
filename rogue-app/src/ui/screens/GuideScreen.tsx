@@ -121,7 +121,8 @@ export function GuideScreen({ onClose }: Props) {
           <Text style={styles.body} allowFontScaling={false}>
             • Move with the D-pad. Walk into a monster to attack it.{'\n'}
             • Get — pick up the item under you.{'\n'}
-            • Pack — open your inventory to use, wield, wear, or drop items.{'\n'}
+            • Pack — open your inventory to use, wield, wear, drop, or throw items
+            (Throw hurls a weapon at the nearest enemy you can see).{'\n'}
             • Down / Up — take stairs ({'>'} / {'<'}). You can only go up once you
             hold the Amulet.{'\n'}
             • Search — look for hidden traps in the squares around you.{'\n'}

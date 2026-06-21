@@ -70,32 +70,32 @@ function mt(
 // regenerate (troll/griffin/vampire), random_move (bat). Dragon's fire is the
 // "3x10" group in its damage string.
 export const MONSTER_TEMPLATES: MonsterTemplate[] = [
-  mt('A', 'aquator', CYAN, 5, 2, 20, 0, '0x0/0x0', 1, 'rust_armor'),
+  mt('A', 'aquator', CYAN, 5, 2, 20, 0, '0x0/0x0', 1, 'aggressive rust_armor'),
   mt('B', 'bat', DARK_GRAY, 1, 3, 1, 0, '1x2', 2, 'random_move'),
   mt('C', 'centaur', BROWN, 4, 4, 17, 15, '1x2/1x5/1x5'),
-  mt('D', 'dragon', RED, 10, -1, 5000, 100, '1x8/1x8/3x10'),
-  mt('E', 'emu', BROWN, 1, 7, 2, 0, '1x2'),
-  mt('F', 'venus flytrap', DARK_GREEN, 8, 3, 80, 0, '0x0', 1, 'hold'),
-  mt('G', 'griffin', YELLOW, 13, 2, 2000, 20, '4x3/3x5', 1, 'regenerate'),
-  mt('H', 'hobgoblin', BROWN, 1, 5, 3, 0, '1x8'),
+  mt('D', 'dragon', RED, 10, -1, 5000, 100, '1x8/1x8/3x10', 1, 'aggressive'),
+  mt('E', 'emu', BROWN, 1, 7, 2, 0, '1x2', 1, 'aggressive'),
+  mt('F', 'venus flytrap', DARK_GREEN, 8, 3, 80, 0, '0x0', 1, 'aggressive hold'),
+  mt('G', 'griffin', YELLOW, 13, 2, 2000, 20, '4x3/3x5', 1, 'aggressive regenerate'),
+  mt('H', 'hobgoblin', BROWN, 1, 5, 3, 0, '1x8', 1, 'aggressive'),
   mt('I', 'ice monster', CYAN, 1, 9, 5, 0, '0x0', 1, 'freeze'),
   mt('J', 'jabberwock', MAGENTA, 15, 6, 3000, 70, '2x12/2x4'),
-  mt('K', 'kestrel', LIGHT_GRAY, 1, 7, 1, 0, '1x4', 2),
+  mt('K', 'kestrel', LIGHT_GRAY, 1, 7, 1, 0, '1x4', 2, 'aggressive'),
   mt('L', 'leprechaun', GREEN, 3, 8, 10, 0, '1x1', 1, 'steal_gold'),
-  mt('M', 'medusa', PURPLE, 8, 2, 200, 40, '3x4/3x4/2x5', 1, 'confuse'),
+  mt('M', 'medusa', PURPLE, 8, 2, 200, 40, '3x4/3x4/2x5', 1, 'aggressive confuse'),
   mt('N', 'nymph', CYAN, 3, 9, 37, 100, '0x0', 1, 'steal_item'),
   mt('O', 'orc', GREEN, 1, 6, 5, 15, '1x8'),
   mt('P', 'phantom', GRAY, 8, 3, 120, 0, '4x4', 1, 'invisible'),
-  mt('Q', 'quagga', BROWN, 3, 3, 15, 0, '1x5/1x5'),
-  mt('R', 'rattlesnake', DARK_GREEN, 2, 3, 9, 0, '1x6', 1, 'poison'),
-  mt('S', 'snake', GREEN, 1, 5, 2, 0, '1x3'),
-  mt('T', 'troll', DARK_GREEN, 6, 4, 120, 50, '1x8/1x8/2x6', 1, 'regenerate'),
-  mt('U', 'black unicorn', DARK_RED, 7, -2, 190, 0, '1x9/1x9/2x9'),
-  mt('V', 'vampire', RED, 8, 1, 350, 20, '1x10', 1, 'regenerate drain_maxhp'),
+  mt('Q', 'quagga', BROWN, 3, 3, 15, 0, '1x5/1x5', 1, 'aggressive'),
+  mt('R', 'rattlesnake', DARK_GREEN, 2, 3, 9, 0, '1x6', 1, 'aggressive poison'),
+  mt('S', 'snake', GREEN, 1, 5, 2, 0, '1x3', 1, 'aggressive'),
+  mt('T', 'troll', DARK_GREEN, 6, 4, 120, 50, '1x8/1x8/2x6', 1, 'aggressive regenerate'),
+  mt('U', 'black unicorn', DARK_RED, 7, -2, 190, 0, '1x9/1x9/2x9', 1, 'aggressive'),
+  mt('V', 'vampire', RED, 8, 1, 350, 20, '1x10', 1, 'aggressive regenerate drain_maxhp'),
   mt('W', 'wraith', GRAY, 5, 4, 55, 0, '1x6', 1, 'drain_level'),
   mt('X', 'xeroc', YELLOW, 7, 7, 100, 30, '4x4', 1, 'disguise'),
   mt('Y', 'yeti', WHITE, 4, 6, 50, 30, '1x6/1x6', 1, 'freeze'),
-  mt('Z', 'zombie', DARK_GREEN, 2, 8, 6, 0, '1x8'),
+  mt('Z', 'zombie', DARK_GREEN, 2, 8, 6, 0, '1x8', 1, 'aggressive'),
 ];
 
 // Native monster per dungeon depth 1..26 (monsters.c `lvl_mons`).
@@ -147,7 +147,13 @@ export class Monster extends Actor {
     const player = engine.player;
     const dungeon = engine.dungeon;
 
-    if (this.aggravated || engine.canMonsterSeePlayer(this)) this.aware = true;
+    if (this.aggravated || engine.canMonsterSeePlayer(this)) {
+      this.aware = true;
+    } else if (this.flags.has('aggressive')) {
+      // ISMEAN: wake the moment the hero shares the monster's room.
+      const room = dungeon.inRoom(this.x, this.y);
+      if (room && room === dungeon.inRoom(player.x, player.y)) this.aware = true;
+    }
 
     if (!this.aware) {
       if (rng.random() < 0.1 && this.flags.has('random_move')) {

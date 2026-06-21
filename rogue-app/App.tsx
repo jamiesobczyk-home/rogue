@@ -122,6 +122,10 @@ export default function App() {
         onDrop={(item: Item) => {
           act((e) => e.actionDropItem(item));
         }}
+        onThrow={(item: Item) => {
+          act((e) => e.actionThrowItem(item));
+          setScreen('game');
+        }}
         onIdentify={(item: Item) => {
           act((e) => e.actionIdentifyItem(item));
           // A wrong-category pick is rejected and keeps us in identify mode.

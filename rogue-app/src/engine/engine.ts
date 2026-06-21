@@ -5,6 +5,8 @@ import {
   MAP_HEIGHT,
   MAX_DUNGEON_LEVEL,
   TILE_FLOOR,
+  TILE_CORRIDOR,
+  TILE_DOOR,
   TILE_STAIRS_DN,
   TILE_STAIRS_UP,
   TILE_TRAP,
@@ -12,10 +14,11 @@ import {
   SLEEPING_TURNS,
   FROZEN_TURNS,
   STARVETIME,
+  addDam,
   RGB,
 } from './constants';
 import { rng } from './rng';
-import { swing } from './combat';
+import { swing, rollDice } from './combat';
 import { Dungeon, Trap } from './dungeon';
 import { Player } from './entities';
 import {
@@ -256,6 +259,8 @@ export class GameEngine {
     }
 
     if (this.dungeon.isWalkable(tx, ty)) {
+      // Rogue forbids diagonal moves into/out of doorways and passages.
+      if (this.diagonalBlocked(this.player.x, this.player.y, tx, ty)) return false;
       this.player.moveTo(tx, ty);
       this.updateFov(tx, ty);
       this.autoPickupGold();
@@ -266,6 +271,13 @@ export class GameEngine {
     }
 
     return false;
+  }
+
+  /** True if a diagonal step would slip through a doorway or passage. */
+  private diagonalBlocked(fx: number, fy: number, tx: number, ty: number): boolean {
+    if (fx === tx || fy === ty) return false; // orthogonal moves are fine
+    const passage = (t: number) => t === TILE_DOOR || t === TILE_CORRIDOR;
+    return passage(this.dungeon.tile(fx, fy)) || passage(this.dungeon.tile(tx, ty));
   }
 
   actionWait(): void {
@@ -374,6 +386,51 @@ export class GameEngine {
     this.player.removeItem(item);
     this.items.push(item);
     this.addMessage(`You drop the ${item.displayName()}.`);
+    this.endPlayerTurn();
+  }
+
+  /** Hurl an item at the nearest visible monster (auto-targeted). */
+  actionThrowItem(item: Item): void {
+    if (this.state !== STATE_PLAYING) return;
+    const p = this.player;
+    const target = this.nearestVisibleMonster();
+    p.removeItem(item);
+
+    if (!target) {
+      item.x = p.x;
+      item.y = p.y;
+      this.items.push(item);
+      this.addMessage(`You throw the ${item.displayName()}, but there is nothing to hit.`);
+      this.endPlayerTurn();
+      return;
+    }
+
+    const w = item instanceof Weapon ? item : null;
+    const wplus = p.toHitBonus + (w ? w.enchant : 0);
+    if (w && swing(p.expLevel, target.defense, wplus)) {
+      let dmg = rollDice(w.hurlDice[0], w.hurlDice[1]) + addDam(p.effectiveStr) + w.enchant;
+      // Firing matching ammo while wielding its launcher adds a bonus.
+      if (w.missile && w.launcher && p.weapon instanceof Weapon && p.weapon.name === w.launcher) {
+        dmg += rollDice(1, 6);
+      }
+      dmg = Math.max(1, dmg);
+      target.takeDamage(dmg);
+      this.addMessage(`The ${item.displayName()} hits the ${target.name} for ${dmg} damage!`);
+      if (!target.alive) {
+        this.addMessage(`You killed the ${target.name}!`);
+        this.removeMonster(target);
+        this.dropMonsterLoot(target);
+        const lvl = p.gainExp(target.xpValue);
+        if (lvl) this.addMessage(lvl);
+      }
+    } else {
+      this.addMessage(`The ${item.displayName()} misses the ${target.name}.`);
+    }
+
+    // The thrown item lands on the target's square.
+    item.x = target.x;
+    item.y = target.y;
+    this.items.push(item);
     this.endPlayerTurn();
   }
 

@@ -408,14 +408,31 @@ offline in the PWA.)
 Tests after Phase 9: **74 green** (new `phase9.test.ts`: amulet gating, infinite
 descent, depth scaling, treasure rooms, cause-of-death).
 
-### Status
-Phases 1–9 are done. The TypeScript engine in `rogue-app/src/engine/` is the
-single source of truth (the Python prototype was retired).
+**Phase 10 — Remaining tail. ✅ DONE.**
+1. ✅ **Throwing / ranged combat**: a Throw action (inventory button) hurls a
+   weapon at the nearest visible monster using the original `weap_info` hurl
+   dice; missiles (dart/shuriken/arrow/dagger/spear) carry; firing matching ammo
+   while wielding its launcher (arrow + short bow) adds a bonus; the missile
+   lands on the target's square.
+2. ✅ **ISMEAN "awake in room"**: mean monsters (the 15 original ISMEAN letters)
+   now wake the instant the hero shares their room, even out of line of sight;
+   non-mean monsters still slumber until seen or disturbed.
+3. ✅ **No diagonal moves through doorways/passages** (Rogue movement rule).
 
-**Still open (lower-priority tail), should we want full parity:** throwing /
-launchers (bow+arrow as ranged); ISMEAN "awake in room" behavior;
-no-diagonal-through-doors; the JS PRNG does not reproduce the BSD `rnd()` stream
-byte-for-byte.
+Tests after Phase 10: **78 green** (new `phase10.test.ts`).
+
+### Status — feature-complete vs. the original's mechanics
+Phases 1–10 are done. The TypeScript engine in `rogue-app/src/engine/` is the
+single source of truth (the Python prototype was retired). Every major Rogue
+5.4.4 subsystem — combat, strength, monsters, XP, dungeon layout, FOV, hunger,
+regeneration, items/ID/rings/wands, traps, wandering monsters, haste/blindness,
+the amulet endgame with depth scaling, treasure rooms, scoring, throwing, and
+monster aggro — is now modelled on the original.
+
+**Only deliberate deviation left:** the JS PRNG does not reproduce the BSD
+`rnd()` stream byte-for-byte (large effort, zero gameplay effect — a numeric
+seed won't regenerate the *identical* 1980 dungeon, but same-seed runs are fully
+reproducible in our engine).
 
 ---
 

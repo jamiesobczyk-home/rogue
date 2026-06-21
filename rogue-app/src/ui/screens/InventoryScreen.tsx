@@ -9,6 +9,7 @@ interface Props {
   identifyKind?: string;
   onUse: (item: Item) => void;
   onDrop: (item: Item) => void;
+  onThrow: (item: Item) => void;
   onIdentify: (item: Item) => void;
   onClose: () => void;
 }
@@ -33,6 +34,7 @@ export function InventoryScreen({
   identifyKind,
   onUse,
   onDrop,
+  onThrow,
   onIdentify,
   onClose,
 }: Props) {
@@ -86,6 +88,16 @@ export function InventoryScreen({
                       Use
                     </Text>
                   </Pressable>
+                  {item.kind === 'weapon' && (
+                    <Pressable
+                      onPress={() => onThrow(item)}
+                      style={({ pressed }) => [styles.actBtn, pressed && styles.actBtnPressed]}
+                    >
+                      <Text style={styles.actText} allowFontScaling={false}>
+                        Throw
+                      </Text>
+                    </Pressable>
+                  )}
                   <Pressable
                     onPress={() => onDrop(item)}
                     style={({ pressed }) => [styles.actBtn, pressed && styles.actBtnPressed]}

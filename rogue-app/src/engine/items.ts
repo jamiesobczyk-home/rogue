@@ -116,31 +116,40 @@ export class Gold extends Item {
 interface WeaponDef {
   name: string;
   dice: [number, number];
+  hurl: [number, number]; // damage when thrown (weap_info hurl dice)
   prob: number;
   value: number;
+  missile?: boolean; // ammo/throwing weapon (dart, shuriken, arrow)
+  launcher?: string; // weapon that boosts this missile when wielded
 }
 
 const WEAPONS: WeaponDef[] = [
-  { name: 'mace', dice: [2, 4], prob: 11, value: 8 },
-  { name: 'long sword', dice: [3, 4], prob: 11, value: 15 },
-  { name: 'short bow', dice: [1, 1], prob: 12, value: 15 },
-  { name: 'arrow', dice: [1, 1], prob: 12, value: 1 },
-  { name: 'dagger', dice: [1, 6], prob: 8, value: 3 },
-  { name: 'two-handed sword', dice: [4, 4], prob: 10, value: 75 },
-  { name: 'dart', dice: [1, 1], prob: 12, value: 2 },
-  { name: 'shuriken', dice: [1, 2], prob: 12, value: 5 },
-  { name: 'spear', dice: [2, 3], prob: 12, value: 5 },
+  { name: 'mace', dice: [2, 4], hurl: [1, 3], prob: 11, value: 8 },
+  { name: 'long sword', dice: [3, 4], hurl: [1, 2], prob: 11, value: 15 },
+  { name: 'short bow', dice: [1, 1], hurl: [1, 1], prob: 12, value: 15 },
+  { name: 'arrow', dice: [1, 1], hurl: [2, 3], prob: 12, value: 1, missile: true, launcher: 'short bow' },
+  { name: 'dagger', dice: [1, 6], hurl: [1, 4], prob: 8, value: 3, missile: true },
+  { name: 'two-handed sword', dice: [4, 4], hurl: [1, 2], prob: 10, value: 75 },
+  { name: 'dart', dice: [1, 1], hurl: [1, 3], prob: 12, value: 2, missile: true },
+  { name: 'shuriken', dice: [1, 2], hurl: [2, 4], prob: 12, value: 5, missile: true },
+  { name: 'spear', dice: [2, 3], hurl: [1, 6], prob: 12, value: 5, missile: true },
 ];
 
 export class Weapon extends Item {
   kind = 'weapon';
   enchant: number;
+  hurlDice: [number, number];
+  missile: boolean;
+  launcher: string | null;
 
   constructor(x: number, y: number, templateIdx?: number, enchant = 0, cursed = false) {
     const idx = templateIdx ?? WEAPONS.indexOf(pickByProb(WEAPONS));
     const def = WEAPONS[idx];
     super(x, y, ')', WEAPON_COLOR, def.name, 1, def.value);
     this.damageDice = def.dice;
+    this.hurlDice = def.hurl;
+    this.missile = def.missile ?? false;
+    this.launcher = def.launcher ?? null;
     this.damageBonus = enchant; // original weapons have no base bonus
     this.enchant = enchant;
     this.cursed = cursed;
