@@ -1,4 +1,5 @@
 // Shared UI theme helpers.
+import { Platform } from 'react-native';
 import { RGB } from '../engine';
 
 /** Convert an engine [r,g,b] tuple to a CSS rgb() string. */
@@ -19,5 +20,13 @@ export const COLORS = {
   buttonBorder: '#3a3a3a',
 };
 
-// A monospace font stack that exists on both iOS and Android.
-export const MONO = 'monospace';
+// A monospaced font that actually resolves on each platform.
+// iOS does NOT support the generic "monospace" family (it silently falls back
+// to the proportional system font, which breaks the tile grid) — it needs a
+// real font name like "Menlo". Android uses the "monospace" alias; web/CSS
+// understands "monospace" too.
+export const MONO = Platform.select({
+  ios: 'Menlo',
+  android: 'monospace',
+  default: 'monospace',
+}) as string;

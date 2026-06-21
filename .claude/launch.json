@@ -4,7 +4,7 @@
     {
       "name": "rogue-web",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["serve", "rogue-app/dist-web", "-l", "8090"],
+      "runtimeArgs": ["serve", "rogue-app/_serve", "-l", "8090"],
       "port": 8090
     }
   ]
