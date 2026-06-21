@@ -23,6 +23,7 @@ import {
   RGB,
 } from './constants';
 import { rng } from './rng';
+import { swing } from './combat';
 import type { Dungeon } from './dungeon';
 import type { GameEngine } from './engine';
 
@@ -60,33 +61,37 @@ function mt(
   return { letter, name, color, minLevel, maxLevel, hpDice, attackDice, defense, xpValue, speed, flags };
 }
 
+// The `defense` column is the original signed armor class (Rogue 5.4.4
+// extern.c) — LOWER is better, and some monsters (dragon, black unicorn) have
+// negative AC. It feeds swing() directly. Names, HP dice, attack dice and exp
+// remain the simplified port for now (corrected in a later pass).
 export const MONSTER_TEMPLATES: MonsterTemplate[] = [
   mt('A', 'aquator', CYAN, 5, 26, [5, 8], [0, 0], 2, 20, 1, 'rust_armor'),
   mt('B', 'bat', DARK_GRAY, 1, 8, [1, 8], [1, 2], 3, 5, 2, 'random_move'),
-  mt('C', 'centipede', GREEN, 2, 10, [2, 4], [1, 3], 3, 15, 1, 'reduce_str'),
-  mt('D', 'dragon', RED, 10, 26, [10, 8], [4, 8], 9, 5000, 1, 'breathe_fire'),
-  mt('E', 'emu', BROWN, 1, 6, [1, 8], [1, 2], 2, 2, 1, 'aggressive'),
+  mt('C', 'centipede', GREEN, 2, 10, [2, 4], [1, 3], 4, 15, 1, 'reduce_str'),
+  mt('D', 'dragon', RED, 10, 26, [10, 8], [4, 8], -1, 5000, 1, 'breathe_fire'),
+  mt('E', 'emu', BROWN, 1, 6, [1, 8], [1, 2], 7, 2, 1, 'aggressive'),
   mt('F', 'venus flytrap', DARK_GREEN, 8, 26, [8, 8], [0, 0], 3, 80, 1, 'hold'),
-  mt('G', 'griffin', YELLOW, 13, 26, [13, 8], [5, 8], 5, 2000, 1, 'aggressive'),
-  mt('H', 'hobgoblin', BROWN, 1, 8, [1, 8], [1, 8], 1, 10),
-  mt('I', 'ice monster', CYAN, 1, 8, [1, 8], [0, 0], 1, 15, 1, 'freeze'),
+  mt('G', 'griffin', YELLOW, 13, 26, [13, 8], [5, 8], 2, 2000, 1, 'aggressive'),
+  mt('H', 'hobgoblin', BROWN, 1, 8, [1, 8], [1, 8], 5, 10),
+  mt('I', 'ice monster', CYAN, 1, 8, [1, 8], [0, 0], 9, 15, 1, 'freeze'),
   mt('J', 'jabberwock', MAGENTA, 15, 26, [15, 8], [2, 12], 6, 3000),
-  mt('K', 'kestrel', LIGHT_GRAY, 1, 6, [1, 4], [1, 4], 1, 5, 2),
-  mt('L', 'leprechaun', GREEN, 3, 15, [3, 8], [1, 1], 3, 10, 1, 'steal_gold'),
-  mt('M', 'medusa', PURPLE, 8, 26, [8, 8], [3, 4], 8, 200, 1, 'confuse'),
-  mt('N', 'nymph', CYAN, 3, 14, [3, 8], [0, 0], 3, 25, 1, 'steal_item'),
+  mt('K', 'kestrel', LIGHT_GRAY, 1, 6, [1, 4], [1, 4], 7, 5, 2),
+  mt('L', 'leprechaun', GREEN, 3, 15, [3, 8], [1, 1], 8, 10, 1, 'steal_gold'),
+  mt('M', 'medusa', PURPLE, 8, 26, [8, 8], [3, 4], 2, 200, 1, 'confuse'),
+  mt('N', 'nymph', CYAN, 3, 14, [3, 8], [0, 0], 9, 25, 1, 'steal_item'),
   mt('O', 'orc', GREEN, 5, 18, [5, 8], [1, 8], 6, 25),
   mt('P', 'phantom', GRAY, 8, 26, [8, 8], [4, 6], 3, 120, 1, 'invisible'),
   mt('Q', 'quagga', BROWN, 3, 15, [3, 8], [2, 5], 3, 30),
   mt('R', 'rattlesnake', DARK_GREEN, 2, 12, [2, 6], [1, 6], 3, 20, 1, 'poison'),
-  mt('S', 'snake', GREEN, 1, 8, [1, 6], [1, 3], 1, 5),
+  mt('S', 'snake', GREEN, 1, 8, [1, 6], [1, 3], 5, 5),
   mt('T', 'troll', DARK_GREEN, 7, 26, [6, 8], [2, 6], 4, 50, 1, 'regenerate'),
-  mt('U', 'ur-vile', DARK_RED, 7, 26, [7, 8], [1, 4], 2, 90, 1, 'cast_spell'),
+  mt('U', 'ur-vile', DARK_RED, 7, 26, [7, 8], [1, 4], -2, 90, 1, 'cast_spell'),
   mt('V', 'vampire', RED, 8, 26, [8, 8], [1, 10], 1, 350, 1, 'drain_level'),
   mt('W', 'wraith', GRAY, 5, 26, [5, 8], [1, 6], 4, 55, 1, 'drain_level'),
   mt('X', 'xeroc', YELLOW, 7, 26, [7, 8], [4, 8], 7, 100, 1, 'disguise'),
   mt('Y', 'yeti', WHITE, 5, 20, [4, 8], [1, 6], 6, 50, 1, 'freeze'),
-  mt('Z', 'zombie', DARK_GREEN, 2, 10, [2, 8], [1, 8], 2, 6),
+  mt('Z', 'zombie', DARK_GREEN, 2, 10, [2, 8], [1, 8], 8, 6),
 ];
 
 export function templatesForLevel(level: number): MonsterTemplate[] {
@@ -129,6 +134,11 @@ export class Monster extends Actor {
     this.flags = new Set(template.flags ? template.flags.split(' ') : []);
     this.speed = template.speed;
     this.invisible = this.flags.has('invisible');
+  }
+
+  /** Combat level for swing() — HP is rolled as `level`d8, so hpDice[0] is it. */
+  get level(): number {
+    return this.template.hpDice[0];
   }
 
   // -- AI tick -------------------------------------------------------
@@ -200,8 +210,8 @@ export class Monster extends Actor {
   private attack(engine: GameEngine, player: Player): string | null {
     if (this.template.attackDice[1] === 0) return this.specialAttack(engine, player);
 
-    const hitRoll = rng.randint(1, 20);
-    if (hitRoll < player.effectiveAc) return null; // miss — no spam
+    // Rogue to-hit: rnd(20) >= (20 - monsterLevel) - playerAC.
+    if (!swing(this.level, player.effectiveAc, 0)) return null; // miss — no spam
 
     const damage = this.rollAttack();
     player.takeDamage(damage);

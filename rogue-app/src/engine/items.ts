@@ -16,6 +16,7 @@ import {
   HASTED_TURNS,
   HALLUC_TURNS,
   PLAYER_EXP_TABLE,
+  STR_MAX,
   RGB,
 } from './constants';
 import { rng } from './rng';
@@ -281,8 +282,8 @@ export class Potion extends Item {
       return 'You feel confused.';
     }
     if (key === 'gain_str') {
-      player.strCur = Math.min(player.strCur + 1, 18);
-      player.strBase = Math.min(player.strBase + 1, 18);
+      player.strCur = Math.min(player.strCur + 1, STR_MAX);
+      player.strBase = Math.min(player.strBase + 1, STR_MAX);
       return 'You feel stronger!';
     }
     if (key === 'restore_str') {

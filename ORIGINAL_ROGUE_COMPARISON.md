@@ -237,13 +237,25 @@ neighborhood.
 Each phase is independently shippable and testable. Phases 1–3 deliver the
 biggest "feels like Rogue" payoff for the least code.
 
-**Phase 1 — Combat core (high impact, low risk).**
-1. Add `str_plus[]` / `add_dam[]` to `constants.ts`; raise STR cap to 31.
-2. Add `swing(atLvl, opArm, wplus)` and `rollDamage(groups, bonus)` helpers.
-3. Rewrite `playerAttack` and `Monster.attack` to use them; convert monster AC to
-   signed (lower = better) and player AC to the original 10-minus-armor scale
-   (already effectively true) but consumed via the formula, not a threshold.
-4. Update `audit.test.ts`/`engine.test.ts` expectations.
+**Phase 1 — Combat core (high impact, low risk). ✅ DONE (TypeScript engine).**
+1. ✅ Added `STR_PLUS[]` / `ADD_DAM[]` + `strPlus()`/`addDam()` to `constants.ts`;
+   raised the STR cap to 31 (`STR_MAX`), applied in the gain-strength potion.
+2. ✅ New `combat.ts` with the authentic `swing(atLvl, opArm, wplus)` plus
+   `parseDamage()` / `rollDamageGroups()` helpers (the latter ready for the
+   Phase 2 multi-attack work).
+3. ✅ `playerAttack` and `Monster.attack` now use `swing()`. Monster AC is stored
+   as the original signed value (lower = better; dragon −1, black unicorn −2);
+   player AC already uses the 10-minus-armor scale and is consumed via the
+   formula, not a flat threshold. Player to-hit adds `strPlus + weapon enchant`;
+   damage adds `addDam`.
+4. ✅ Existing suites still green (28) + new `combat.test.ts` (5) locking the
+   formula and the strength tables. Engine typechecks clean.
+
+> **Open decision — Python sibling.** Only the TypeScript engine was updated.
+> `rogue/game/` (Python/Kivy) is now behind, breaking the "ported 1:1" note in
+> `constants.ts`. Recommendation: make the TypeScript engine authoritative (it is
+> the deployed PWA) and either retire the Python copy or batch-sync it when we
+> reach the larger Phase 2/4 changes. Flag for the user.
 
 **Phase 2 — Monster + XP data (high impact, low risk).**
 1. Rebuild `MONSTER_TEMPLATES` from §3.3 (correct names, exp, lvl, signed AC,

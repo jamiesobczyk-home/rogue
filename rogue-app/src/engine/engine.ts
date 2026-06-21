@@ -11,6 +11,7 @@ import {
   RGB,
 } from './constants';
 import { rng } from './rng';
+import { swing } from './combat';
 import { Dungeon } from './dungeon';
 import { Player } from './entities';
 import {
@@ -299,8 +300,8 @@ export class GameEngine {
   // -- Combat helpers ------------------------------------------------
 
   private playerAttack(target: Monster): void {
-    const hitRoll = rng.randint(1, 20);
-    if (hitRoll < target.defense) {
+    // Rogue to-hit: rnd(20) + toHitBonus >= (20 - level) - monsterAC.
+    if (!swing(this.player.expLevel, target.defense, this.player.toHitBonus)) {
       this.addMessage(`You miss the ${target.name}.`);
       return;
     }

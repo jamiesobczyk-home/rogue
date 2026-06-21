@@ -10,6 +10,8 @@ import {
   MAX_INVENTORY,
   WHITE,
   RGB,
+  strPlus,
+  addDam,
 } from './constants';
 import { rng } from './rng';
 import type { Item } from './items';
@@ -167,15 +169,12 @@ export class Player extends Actor {
     this.armorAc = this.armor ? this.armor.acBonus : 0;
   }
 
-  // -- STR modifiers -----------------------------------------------
+  // -- STR modifiers (Rogue 5.4.4 str_plus / add_dam) --------------
 
-  get strDamageBonus(): number {
-    if (this.strCur >= 18) return 6;
-    if (this.strCur >= 16) return 4;
-    if (this.strCur >= 13) return 2;
-    if (this.strCur >= 10) return 0;
-    if (this.strCur >= 7) return -1;
-    return -2;
+  /** To-hit bonus: strength modifier plus the wielded weapon's enchantment. */
+  get toHitBonus(): number {
+    const weaponPlus = this.weapon ? (this.weapon as unknown as { enchant?: number }).enchant ?? 0 : 0;
+    return strPlus(this.strCur) + weaponPlus;
   }
 
   // -- Attack ------------------------------------------------------
@@ -188,7 +187,7 @@ export class Player extends Actor {
     let dmg = 0;
     for (let i = 0; i < n; i++) dmg += rng.randint(1, sides);
     if (this.weapon) dmg += this.weapon.damageBonus;
-    dmg += this.strDamageBonus;
+    dmg += addDam(this.strCur);
     return Math.max(1, dmg);
   }
 

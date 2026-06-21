@@ -113,6 +113,24 @@ export const PLAYER_EXP_TABLE = [
 ];
 
 // ---------------------------------------------------------------------------
+// Strength modifier tables  (Rogue 5.4.4 fight.c)
+// Indexed directly by the strength value (0..31). str_plus adjusts to-hit,
+// add_dam adjusts damage. At the starting STR 16: strPlus=0, addDam=1.
+// ---------------------------------------------------------------------------
+export const STR_MAX = 31;
+
+export const STR_PLUS = [
+  -7, -6, -5, -4, -3, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3,
+];
+export const ADD_DAM = [
+  -7, -6, -5, -4, -3, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 3, 3, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6,
+];
+
+const clampStr = (str: number): number => Math.max(0, Math.min(STR_MAX, Math.floor(str)));
+export const strPlus = (str: number): number => STR_PLUS[clampStr(str)];
+export const addDam = (str: number): number => ADD_DAM[clampStr(str)];
+
+// ---------------------------------------------------------------------------
 // Hunger system  (turns remaining)
 // ---------------------------------------------------------------------------
 export const HUNGER_FULL = 1300;
