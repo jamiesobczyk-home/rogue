@@ -7,6 +7,7 @@ import {
   TILE_STAIRS_DN,
   TILE_STAIRS_UP,
   CONFUSED_TURNS,
+  STARVETIME,
   RGB,
 } from './constants';
 import { rng } from './rng';
@@ -353,9 +354,14 @@ export class GameEngine {
 
     const hungerMsg = this.player.tickHunger();
     if (hungerMsg) this.addMessage(hungerMsg);
-    if (this.player.hunger <= 0 && this.turn % 10 === 0) {
-      this.player.takeDamage(1);
-      this.addMessage('You feel faint from hunger!');
+    if (this.player.hunger <= 0) {
+      // Starving: occasional fainting damage, death after STARVETIME turns.
+      if (this.player.hunger < -STARVETIME) {
+        this.player.hp = 0;
+        this.addMessage('You have starved to death.');
+      } else if (rng.random() < 0.2) {
+        this.player.takeDamage(1);
+      }
     }
 
     if (this.monsterDetectionTurns > 0) this.monsterDetectionTurns -= 1;

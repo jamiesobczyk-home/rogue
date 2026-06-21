@@ -124,7 +124,7 @@ export class Dungeon {
 
   inRoom(x: number, y: number): Rect | null {
     for (const r of this.rooms) {
-      if (r.gone) continue;
+      if (r.gone || r.maze) continue; // maze rooms behave like corridors for FOV
       if (r.x1 < x && x < r.x2 && r.y1 < y && y < r.y2) return r;
     }
     return null;
@@ -219,9 +219,49 @@ export class Dungeon {
       if (posY < 1) posY = 1; // keep clear of the top status row
 
       const room = new Rect(posX, posY, maxW, maxH);
-      room.dark = this.rng.randrange(10) < this.level - 1;
-      this.carveRoom(room);
+      if (this.rng.randrange(15) === 0) {
+        room.maze = true;
+        this.carveMaze(room);
+      } else {
+        room.dark = this.rng.randrange(10) < this.level - 1;
+        this.carveRoom(room);
+      }
       this.rooms.push(room);
+    }
+  }
+
+  /** Carve a perfect maze of corridors inside the room cell (rooms.c do_maze). */
+  private carveMaze(room: Rect): void {
+    const visited = new Set<string>();
+    const sx = room.x1 + 1;
+    const sy = room.y1 + 1;
+    this.setTile(sx, sy, TILE_CORRIDOR);
+    visited.add(key(sx, sy));
+    const stack: Pos[] = [[sx, sy]];
+
+    while (stack.length > 0) {
+      const [cx, cy] = stack[stack.length - 1];
+      const dirs: Pos[] = [
+        [0, -2],
+        [0, 2],
+        [-2, 0],
+        [2, 0],
+      ];
+      this.rng.shuffle(dirs);
+      let advanced = false;
+      for (const [dx, dy] of dirs) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx > room.x1 && nx < room.x2 && ny > room.y1 && ny < room.y2 && !visited.has(key(nx, ny))) {
+          this.setTile(cx + dx / 2, cy + dy / 2, TILE_CORRIDOR); // knock down the wall between
+          this.setTile(nx, ny, TILE_CORRIDOR);
+          visited.add(key(nx, ny));
+          stack.push([nx, ny]);
+          advanced = true;
+          break;
+        }
+      }
+      if (!advanced) stack.pop();
     }
   }
 
@@ -308,6 +348,11 @@ export class Dungeon {
       const p: Pos = [room.x, room.y];
       return [p, p];
     }
+    if (room.maze) {
+      // Connect to the maze passage cell nearest the facing edge.
+      const p = this.nearestMazeCell(room, dir, first);
+      return [p, p];
+    }
     if (dir === 'r') {
       const wallX = first ? room.x2 : room.x1;
       const y = this.rng.randint(room.y1 + 1, room.y2 - 1);
@@ -319,11 +364,27 @@ export class Dungeon {
   }
 
   private placeDoor(room: Rect, p: Pos): void {
-    if (room.gone) {
+    if (room.gone || room.maze) {
       if (this.tile(p[0], p[1]) === TILE_VOID) this.setTile(p[0], p[1], TILE_CORRIDOR);
     } else {
       this.setTile(p[0], p[1], TILE_DOOR);
     }
+  }
+
+  /** The maze passage cell closest to the wall of `room` facing the neighbour. */
+  private nearestMazeCell(room: Rect, dir: 'r' | 'd', first: boolean): Pos {
+    const cells: Pos[] = [];
+    for (let y = room.y1 + 1; y < room.y2; y++) {
+      for (let x = room.x1 + 1; x < room.x2; x++) {
+        if (this.tile(x, y) === TILE_CORRIDOR) cells.push([x, y]);
+      }
+    }
+    if (cells.length === 0) return room.centre;
+    const score = ([x, y]: Pos): number => {
+      if (dir === 'r') return first ? room.x2 - x : x - room.x1;
+      return first ? room.y2 - y : y - room.y1;
+    };
+    return cells.reduce((best, c) => (score(c) < score(best) ? c : best));
   }
 
   /** Corridor cell: void becomes passage, a pierced wall becomes a door. */
@@ -369,12 +430,14 @@ export class Dungeon {
 
   // -- Stairs & spawns -----------------------------------------------
 
-  private realRooms(): Rect[] {
-    return this.rooms.filter((r) => !r.gone);
+  /** Rooms with real floor (excludes gone junctions and maze cells). */
+  private solidRooms(): Rect[] {
+    const solid = this.rooms.filter((r) => !r.gone && !r.maze);
+    return solid.length > 0 ? solid : this.rooms.filter((r) => !r.gone);
   }
 
   private placeStairs(): void {
-    const real = this.realRooms();
+    const real = this.solidRooms();
     const shuffled = [...real];
     this.rng.shuffle(shuffled);
 
@@ -391,7 +454,7 @@ export class Dungeon {
 
   private chooseSpawns(): void {
     const candidates: Pos[] = [];
-    for (const r of this.realRooms()) {
+    for (const r of this.solidRooms()) {
       for (let i = 0; i < r.w * r.h; i++) {
         const pos = r.randomInterior(this.rng);
         const t = this.tile(pos[0], pos[1]);

@@ -40,11 +40,12 @@ shares all the same divergences).
 | **Strength modifiers** | ❌ Invented thresholds | **high** |
 | **Monster stat table** | ⚠️ Wrong names + many wrong stats | **high** |
 | **XP-to-level table** | ❌ Pure doubling, diverges after L7 | medium |
-| ~~Dungeon generation~~ | ✅ 3×3 grid + gone/dark rooms (Phase 4; mazes pending) | resolved |
-| **Player HP regeneration** | ❌ Missing entirely | medium |
+| ~~Dungeon generation~~ | ✅ 3×3 grid + gone/dark/maze rooms (Phase 4) | resolved |
+| ~~Player HP regeneration~~ | ✅ Turn-based doctor() (Phase 3) | resolved |
 | ~~Item tables (potions/scrolls/rings/wands)~~ | ✅ Weighted, completed, rings functional (Phase 5) | resolved |
 | ~~Weapon table + multi-attack damage~~ | ✅ Original nine weapons + monster multi-attack | resolved |
-| FOV / dark rooms | ⚠️ No dark rooms | low |
+| ~~FOV / dark rooms~~ | ✅ Dark rooms + corridor-only sight (Phase 4) | resolved |
+| ~~Hunger model~~ | ✅ STOMACHSIZE/MORETIME/STARVETIME (Phase 6) | resolved |
 
 ---
 
@@ -300,8 +301,9 @@ and via ring of regeneration once rings work).
    corridors reveal only the hero's immediate surroundings.
 5. ✅ Stairs/spawns restricted to real (non-gone) rooms. Room layout flags are
    serialized so FOV survives save/reload.
-6. ⏳ **Maze rooms** (`rnd(15)==0`) are flagged but not yet carved — deferred as
-   a low-impact refinement.
+6. ✅ **Maze rooms** (`rnd(15)==0`) are carved as a perfect maze of corridors
+   (recursive backtracker); they read as corridor for FOV, and corridors tunnel
+   in to the nearest maze passage so connectivity always holds (Phase 6).
 
 Tests after Phase 4: **45 green** (added `dungeon.test.ts`: 9-room grid, gone
 rooms, depth-scaled dark rooms, and start→down-stairs connectivity on 50 seeds,
@@ -335,14 +337,27 @@ Tests after Phase 5: **54 green** (new `items.test.ts`: weapon dice, ring
 effects, two-ring limit, cursed-ring lock, slow digestion, weighted
 distribution). Engine typechecks clean.
 
-**Phase 6 — Lighting & polish (low).**
-Dark-room FOV, hunger cap/threshold alignment to `STOMACHSIZE`/`MORETIME`,
-message-string parity.
+**Phase 6 — Lighting & polish. ✅ DONE.**
+1. ✅ **Hunger** rebuilt on the original units: `HUNGERTIME 1300`,
+   `STOMACHSIZE 2000`, `MORETIME 150`, `STARVETIME 850`. Eating fills toward the
+   2000-unit stomach; warnings fire as the hero *crosses* the 300 (hungry) / 150
+   (weak) / 0 (faint) thresholds (robust to ring digestion); food can go negative
+   and the hero starves to death after `STARVETIME` turns below zero.
+2. ✅ Maze rooms carved (see Phase 4 item 6) — closes out the dungeon generator.
+3. ✅ HUD hunger label aligned to the new thresholds; message strings nudged
+   toward the original wording.
 
-### Suggested sequencing
-Ship **1 → 2 → 3** first (pure logic/data, fully unit-testable, no UI churn),
-then **4**, then **5 → 6**. Keep the Python engine in `rogue/game/` in lockstep
-or formally retire it so the two don't drift.
+Dark-room FOV was already delivered in Phase 4.
+
+Tests after Phase 6: **58 green** (added maze-room connectivity + hunger
+threshold/eat-cap/starvation tests). Engine typechecks clean.
+
+### Status — all phases complete
+Phases 1–6 are done. The TypeScript engine in `rogue-app/src/engine/` is the
+single source of truth (the Python prototype was retired). Remaining known
+simplifications are documented inline above (merged identify scroll;
+bow/arrow as plain weapons; inert searching/adornment rings pending a trap
+system; the JS PRNG does not reproduce the BSD `rnd()` stream byte-for-byte).
 
 ---
 

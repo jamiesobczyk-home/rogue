@@ -1,9 +1,9 @@
 // Phase 2/3 fidelity: authentic monster stats, e_levels XP, and HP regen.
 
-import { GameEngine } from '../src/engine/engine';
+import { GameEngine, STATE_DEAD } from '../src/engine/engine';
 import { MONSTER_TEMPLATES, Monster } from '../src/engine/monsters';
 import { parseDamage } from '../src/engine/combat';
-import { PLAYER_EXP_TABLE } from '../src/engine/constants';
+import { PLAYER_EXP_TABLE, STOMACHSIZE, STARVETIME } from '../src/engine/constants';
 
 const byLetter = (l: string) => MONSTER_TEMPLATES.find((t) => t.letter === l)!;
 
@@ -48,6 +48,32 @@ describe('Experience thresholds use e_levels', () => {
     const e = new GameEngine('xp2');
     e.player.gainExp(1300);
     expect(e.player.expLevel).toBe(9); // passes thresholds up to and incl. 1300
+  });
+});
+
+describe('Hunger system (Rogue stomach/eat)', () => {
+  it('eats up to the stomach size', () => {
+    const e = new GameEngine('hunger-eat');
+    e.player.hunger = 5;
+    e.player.eat(3000);
+    expect(e.player.hunger).toBe(STOMACHSIZE);
+  });
+
+  it('warns as the hero crosses each hunger threshold', () => {
+    const p = new GameEngine('hunger-th').player;
+    p.hunger = 301;
+    expect(p.tickHunger()).toMatch(/hungry/);
+    p.hunger = 151;
+    expect(p.tickHunger()).toMatch(/weak/);
+    p.hunger = 1;
+    expect(p.tickHunger()).toMatch(/faint/);
+  });
+
+  it('starves to death after STARVETIME turns below zero', () => {
+    const e = new GameEngine('starve');
+    e.player.hunger = -STARVETIME; // one more tick pushes past the limit
+    e.actionWait();
+    expect(e.state).toBe(STATE_DEAD);
   });
 });
 

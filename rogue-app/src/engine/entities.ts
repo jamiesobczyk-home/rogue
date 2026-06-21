@@ -6,6 +6,9 @@ import {
   PLAYER_START_AC,
   PLAYER_EXP_TABLE,
   HUNGER_FULL,
+  HUNGER_HUNGRY,
+  HUNGER_WEAK,
+  STOMACHSIZE,
   MAX_INVENTORY,
   WHITE,
   RGB,
@@ -266,6 +269,7 @@ export class Player extends Actor {
   // -- Hunger ------------------------------------------------------
 
   tickHunger(): string | null {
+    const old = this.hunger;
     this.hunger -= 1;
     // Worn rings speed digestion; a ring of slow digestion offsets the cost.
     if (this.rings.length > 0) {
@@ -280,18 +284,16 @@ export class Player extends Actor {
         this.digestion += 3;
       }
     }
-    if (this.hunger === 300) return 'You are starting to feel hungry.';
-    if (this.hunger === 150) return 'You are feeling weak!';
-    if (this.hunger === 20) return 'You are about to faint from hunger!';
-    if (this.hunger <= 0) {
-      this.hunger = 0;
-      return null; // starvation damage handled by caller
-    }
+    // Messages fire as the hero crosses each threshold (Rogue stomach()).
+    if (old > HUNGER_HUNGRY && this.hunger <= HUNGER_HUNGRY) return 'You are starting to get hungry.';
+    if (old > HUNGER_WEAK && this.hunger <= HUNGER_WEAK) return 'You are starting to feel weak.';
+    if (old > 0 && this.hunger <= 0) return 'You faint from lack of food!';
     return null;
   }
 
   eat(nutrition: number): void {
-    this.hunger = Math.min(HUNGER_FULL, this.hunger + nutrition);
+    if (this.hunger < 0) this.hunger = 0;
+    this.hunger = Math.min(STOMACHSIZE, this.hunger + nutrition);
   }
 
   // -- Natural healing (Rogue daemon.c doctor) ---------------------

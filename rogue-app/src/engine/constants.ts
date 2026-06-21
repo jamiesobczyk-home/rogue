@@ -135,19 +135,22 @@ export const strPlus = (str: number): number => STR_PLUS[clampStr(str)];
 export const addDam = (str: number): number => ADD_DAM[clampStr(str)];
 
 // ---------------------------------------------------------------------------
-// Hunger system  (turns remaining)
+// Hunger system  (food_left units; Rogue 5.4.4 rogue.h)
 // ---------------------------------------------------------------------------
-export const HUNGER_FULL = 1300;
-export const HUNGER_HUNGRY = 300;
-export const HUNGER_WEAK = 150;
-export const HUNGER_FAINT = 20;
+export const HUNGERTIME = 1300; // food a ration restores
+export const STOMACHSIZE = 2000; // max food_left
+export const MORETIME = 150; // weak threshold
+export const STARVETIME = 850; // turns at <=0 before death
+
+export const HUNGER_FULL = HUNGERTIME; // food_left at game start
+export const HUNGER_HUNGRY = 2 * MORETIME; // 300 — "getting hungry"
+export const HUNGER_WEAK = MORETIME; // 150 — "feel weak"
+export const HUNGER_FAINT = 0; // fainting from hunger
 
 export const HUNGER_LABELS: Record<number, string> = {
-  [HUNGER_FULL]: 'Full',
   [HUNGER_HUNGRY]: 'Hungry',
   [HUNGER_WEAK]: 'Weak',
   [HUNGER_FAINT]: 'Faint',
-  0: 'Starving',
 };
 
 // ---------------------------------------------------------------------------

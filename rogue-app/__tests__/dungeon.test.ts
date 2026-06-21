@@ -2,7 +2,7 @@
 
 import { Dungeon } from '../src/engine/dungeon';
 import { RNG } from '../src/engine/rng';
-import { MAP_WIDTH, MAP_HEIGHT, TILE_CHARS, TILE_STAIRS_DN } from '../src/engine/constants';
+import { MAP_WIDTH, MAP_HEIGHT, TILE_CHARS, TILE_STAIRS_DN, TILE_CORRIDOR } from '../src/engine/constants';
 
 function build(seed: string, level = 1): Dungeon {
   return new Dungeon(level, new RNG(seed));
@@ -51,6 +51,31 @@ describe('connectivity', () => {
 });
 
 // Render one level so a human can eyeball the layout in test output.
+describe('maze rooms', () => {
+  it('carves connected maze rooms reachable from the start', () => {
+    let foundMaze = false;
+    for (let i = 0; i < 120 && !foundMaze; i++) {
+      const d = build(`maze-${i}`, 5);
+      const maze = d.rooms.find((r) => r.maze);
+      if (!maze) continue;
+      foundMaze = true;
+
+      const corridorCells: [number, number][] = [];
+      for (let y = maze.y1 + 1; y < maze.y2; y++) {
+        for (let x = maze.x1 + 1; x < maze.x2; x++) {
+          if (d.tiles[y][x] === TILE_CORRIDOR) corridorCells.push([x, y]);
+        }
+      }
+      expect(corridorCells.length).toBeGreaterThan(0);
+
+      const [sx, sy] = d.playerStart;
+      const reachable = corridorCells.some(([x, y]) => d.pathTo(sx, sy, x, y).length > 0);
+      expect(reachable).toBe(true);
+    }
+    expect(foundMaze).toBe(true);
+  });
+});
+
 describe('sample render', () => {
   it('dumps an ASCII level', () => {
     const d = build('showcase');
