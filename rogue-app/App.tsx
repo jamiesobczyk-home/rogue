@@ -93,6 +93,9 @@ export default function App() {
         won={engine.state === STATE_WIN}
         score={engine.score()}
         depth={data.hud.dlevel}
+        gold={data.hud.gold}
+        turns={data.hud.turn}
+        cause={engine.deathCause}
         onNewGame={newGame}
       />
     );

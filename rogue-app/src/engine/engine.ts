@@ -4,6 +4,7 @@ import {
   MAP_WIDTH,
   MAP_HEIGHT,
   MAX_DUNGEON_LEVEL,
+  TILE_FLOOR,
   TILE_STAIRS_DN,
   TILE_STAIRS_UP,
   TILE_TRAP,
@@ -90,6 +91,7 @@ export class GameEngine {
   state = STATE_PLAYING;
   turn = 0;
   identifyKind = 'any'; // which item category the pending identify scroll targets
+  deathCause = 'killed in the dungeon'; // recorded for the tombstone screen
 
   monsterDetectionTurns = 0;
   seed: string;
@@ -148,6 +150,32 @@ export class GameEngine {
     }
     for (const [ix, iy] of this.dungeon.itemSpawns) {
       this.items.push(randomItem(ix, iy, this.dungeonLevel, this.registries));
+    }
+
+    this.maybeAddTreasureRoom();
+  }
+
+  /** Occasionally fill a room with gold and guardians (rooms.c treas_room). */
+  private maybeAddTreasureRoom(): void {
+    if (rng.randrange(20) !== 0) return; // ~1 in 20 levels
+    const rooms = this.dungeon.rooms.filter(
+      (r) => !r.gone && !r.maze && !(r.x1 < this.player.x && this.player.x < r.x2 && r.y1 < this.player.y && this.player.y < r.y2),
+    );
+    if (rooms.length === 0) return;
+    const room = rng.choice(rooms);
+
+    let guardians = 0;
+    for (let y = room.y1 + 1; y < room.y2; y++) {
+      for (let x = room.x1 + 1; x < room.x2; x++) {
+        if (this.dungeon.tile(x, y) !== TILE_FLOOR || this.monsterAt(x, y)) continue;
+        if (rng.random() < 0.55) {
+          this.items.push(new Gold(x, y, rng.randint(5, 30 + this.dungeonLevel * 15)));
+        } else if (guardians < 6 && rng.random() < 0.4) {
+          // Sleeping guardians that wake when the hero approaches.
+          this.monsters.push(spawnMonster(x, y, this.dungeonLevel + 2));
+          guardians += 1;
+        }
+      }
     }
   }
 
@@ -355,10 +383,7 @@ export class GameEngine {
       this.addMessage('You see no stairs going down here.');
       return;
     }
-    if (this.dungeonLevel >= MAX_DUNGEON_LEVEL) {
-      this.addMessage('You are already at the lowest level!');
-      return;
-    }
+    // The dungeon continues indefinitely past the Amulet level.
     this.dungeonLevel += 1;
     this.changeLevel();
     this.addMessage(`You descend to dungeon level ${this.dungeonLevel}.`);
@@ -370,11 +395,12 @@ export class GameEngine {
       this.addMessage('You see no stairs going up here.');
       return;
     }
-    if (this.dungeonLevel === 1 && !this.player.hasAmulet) {
-      this.addMessage('You need the Amulet of Yendor to leave the dungeon!');
+    // The way back is sealed until you hold the Amulet of Yendor.
+    if (!this.player.hasAmulet) {
+      this.addMessage('A magical force prevents you from ascending without the Amulet of Yendor.');
       return;
     }
-    if (this.dungeonLevel === 1 && this.player.hasAmulet) {
+    if (this.dungeonLevel === 1) {
       this.triggerWin();
       return;
     }
@@ -451,8 +477,10 @@ export class GameEngine {
       // Starving: occasional fainting damage, death after STARVETIME turns.
       if (this.player.hunger < -STARVETIME) {
         this.player.hp = 0;
+        this.deathCause = 'died of starvation';
         this.addMessage('You have starved to death.');
       } else if (rng.random() < 0.2) {
+        this.deathCause = 'died of starvation';
         this.player.takeDamage(1);
       }
     }
@@ -506,11 +534,10 @@ export class GameEngine {
     switch (trap.kind) {
       case 'trapdoor':
         this.addMessage('You fall through a trap door!');
-        if (this.dungeonLevel < MAX_DUNGEON_LEVEL) {
-          this.dungeonLevel += 1;
-          this.changeLevel();
-          p.takeDamage(rng.randint(1, this.dungeonLevel));
-        }
+        this.dungeonLevel += 1;
+        this.changeLevel();
+        this.deathCause = 'fell to their death through a trap door';
+        p.takeDamage(rng.randint(1, this.dungeonLevel));
         break;
       case 'bear':
         p.frozen = Math.max(p.frozen, rng.randint(2, 5));
@@ -523,6 +550,7 @@ export class GameEngine {
       case 'arrow': {
         if (swing(this.dungeonLevel, p.effectiveAc, 0)) {
           const dmg = rng.randint(1, 6);
+          this.deathCause = 'shot by an arrow trap';
           p.takeDamage(dmg);
           this.addMessage(`An arrow shoots out and hits you for ${dmg} damage!`);
         } else {
@@ -536,6 +564,7 @@ export class GameEngine {
         break;
       case 'dart': {
         const dmg = rng.randint(1, 4);
+        this.deathCause = 'killed by a dart trap';
         p.takeDamage(dmg);
         let msg = `A small dart whizzes out and hits you for ${dmg} damage!`;
         if (rng.random() < 0.4 && p.reduceStr(1)) msg += '  You feel weaker.';
@@ -742,6 +771,7 @@ export class GameEngine {
     }
     if (key === 'drain_life') {
       const dmg = Math.max(1, Math.floor(p.hp / 2));
+      this.deathCause = 'drained their own life force';
       p.takeDamage(dmg);
       target.takeDamage(dmg * 2);
       if (!target.alive) return killed('life drain');
@@ -797,8 +827,9 @@ export class GameEngine {
   }
 
   private triggerDeath(): void {
+    if (this.state === STATE_DEAD) return;
     this.state = STATE_DEAD;
-    this.addMessage(`You die...  Score: ${this.score()}`);
+    this.addMessage(`You die...  ${this.deathCause}.  Score: ${this.score()}`);
   }
 
   private triggerWin(): void {
@@ -806,8 +837,11 @@ export class GameEngine {
     this.addMessage(`You escape with the Amulet of Yendor!  Final score: ${this.score()}`);
   }
 
+  /** Score is gold-driven (Rogue), with depth/xp and a winner bonus. */
   score(): number {
-    return this.player.expPts + this.player.gold + this.dungeonLevel * 100 + this.player.expLevel * 500;
+    let s = this.player.gold + this.player.expPts + this.dungeonLevel * 100 + this.player.expLevel * 100;
+    if (this.state === STATE_WIN) s += 10000 + this.player.gold; // amulet bonus
+    return s;
   }
 
   // -- internal list helpers -----------------------------------------

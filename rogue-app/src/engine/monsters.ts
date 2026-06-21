@@ -23,6 +23,7 @@ import {
   WHITE,
   CONFUSED_TURNS,
   FROZEN_TURNS,
+  MAX_DUNGEON_LEVEL,
   RGB,
 } from './constants';
 import { rng } from './rng';
@@ -118,6 +119,7 @@ export class Monster extends Actor {
   scared = 0;
   invisible: boolean;
   pack: import('./items').Item | null = null; // treasure carried, dropped on death
+  levelBonus = 0; // depth scaling past the Amulet level (lev_add)
 
   constructor(x: number, y: number, template: MonsterTemplate) {
     const hp = Math.max(1, rollDice(template.level, 8));
@@ -131,9 +133,9 @@ export class Monster extends Actor {
     this.invisible = this.flags.has('invisible');
   }
 
-  /** Combat level for swing(). */
+  /** Combat level for swing() (template level plus any depth scaling). */
   get level(): number {
-    return this.template.level;
+    return this.template.level + this.levelBonus;
   }
 
   // -- AI tick -------------------------------------------------------
@@ -218,6 +220,8 @@ export class Monster extends Actor {
     }
     if (landed === 0) return null; // all swings missed — no spam
 
+    const article = /^[aeiou]/i.test(this.name) ? 'an' : 'a';
+    engine.deathCause = `killed by ${article} ${this.name}`;
     player.takeDamage(total);
     let msg = `The ${this.name} hits you for ${total} damage!`;
 
@@ -337,5 +341,15 @@ export function randMonsterLetter(level: number): string {
 export function spawnMonster(x: number, y: number, dungeonLevel: number): Monster {
   const letter = randMonsterLetter(dungeonLevel);
   const template = TEMPLATE_BY_LETTER.get(letter) ?? MONSTER_TEMPLATES[0];
-  return new Monster(x, y, template);
+  const m = new Monster(x, y, template);
+  // Below the Amulet level monsters grow tougher (monsters.c lev_add).
+  const levAdd = Math.max(0, dungeonLevel - MAX_DUNGEON_LEVEL);
+  if (levAdd > 0) {
+    m.levelBonus = levAdd;
+    const extra = rollDice(levAdd, 8);
+    m.maxHp += extra;
+    m.hp += extra;
+    m.xpValue += levAdd * 10;
+  }
+  return m;
 }
