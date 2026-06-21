@@ -1,5 +1,4 @@
 // Base entity classes shared by the player, monsters, and items.
-// Ported from rogue/game/entities.py.
 
 import {
   PLAYER_START_HP,
@@ -148,6 +147,7 @@ export class Player extends Actor {
   hasAmulet = false;
   hallucinating = 0;
   seeInvisible = 0;
+  private regenCounter = 0;
 
   constructor(x: number, y: number) {
     super(x, y, '@', WHITE, 'you', PLAYER_START_HP, [1, 4], PLAYER_START_AC, 0);
@@ -247,6 +247,26 @@ export class Player extends Actor {
 
   eat(nutrition: number): void {
     this.hunger = Math.min(HUNGER_FULL, this.hunger + nutrition);
+  }
+
+  // -- Natural healing (Rogue daemon.c doctor) ---------------------
+
+  /**
+   * Regenerate HP over time. Below level 8 the hero heals 1 HP every
+   * (21 - 2*level) turns; from level 8 on, every 3 turns for rnd(level-7)+1.
+   */
+  regen(): void {
+    if (this.hp >= this.maxHp) {
+      this.regenCounter = 0;
+      return;
+    }
+    this.regenCounter += 1;
+    const interval = this.expLevel < 8 ? Math.max(1, 21 - this.expLevel * 2) : 3;
+    if (this.regenCounter >= interval) {
+      const amount = this.expLevel < 8 ? 1 : rng.randint(1, Math.max(1, this.expLevel - 7));
+      this.heal(amount);
+      this.regenCounter = 0;
+    }
   }
 
   // -- Tick --------------------------------------------------------

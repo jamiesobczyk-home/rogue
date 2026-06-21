@@ -1,5 +1,6 @@
 // Game-wide constants for the Rogue clone.
-// Ported 1:1 from rogue/game/constants.py — keep names in sync with the Python reference.
+// This TypeScript engine is the single source of truth; values are aligned with
+// the original Rogue 5.4.4 C source (see ORIGINAL_ROGUE_COMPARISON.md).
 
 // ---------------------------------------------------------------------------
 // Map dimensions
@@ -107,9 +108,12 @@ export const PLAYER_START_HP = 12;
 export const PLAYER_START_STR = 16;
 export const PLAYER_START_AC = 10; // Lower is better (Rogue/D&D convention)
 export const PLAYER_START_EXP = 1;
+// Experience needed to advance FROM each level (index = current level). Values
+// are the original Rogue 5.4.4 e_levels[] thresholds (extern.c); index 0 is
+// unused. e.g. reaching level 2 costs 10 XP, level 8 costs 1300 (not 1280).
 export const PLAYER_EXP_TABLE = [
-  0, 10, 20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 10240, 20480, 40960, 81920, 163840, 327680,
-  655360, 1310720, 2621440, 5242880, 10485760, 20971520, 41943040, 83886080, 167772160,
+  0, 10, 20, 40, 80, 160, 320, 640, 1300, 2600, 5200, 13000, 26000, 50000, 100000, 200000, 400000,
+  800000, 2000000, 4000000, 8000000,
 ];
 
 // ---------------------------------------------------------------------------

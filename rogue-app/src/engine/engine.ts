@@ -1,5 +1,4 @@
 // Core game engine — manages game state and processes turns.
-// Ported from rogue/game/engine.py.
 
 import {
   MAP_WIDTH,
@@ -313,7 +312,8 @@ export class GameEngine {
     if (!target.alive) {
       this.addMessage(`You killed the ${target.name}!`);
       this.removeMonster(target);
-      if (rng.random() < 0.2) {
+      // Treasure drop gated by the monster's carry% (extern.c).
+      if (rng.randrange(100) < target.template.carry) {
         const amount = rng.randint(1, Math.floor(target.xpValue / 2) + 1);
         this.items.push(new Gold(target.x, target.y, amount));
       }
@@ -340,6 +340,8 @@ export class GameEngine {
     this.turn += 1;
 
     for (const m of this.player.tickEffects()) this.addMessage(m);
+
+    this.player.regen();
 
     const hungerMsg = this.player.tickHunger();
     if (hungerMsg) this.addMessage(hungerMsg);

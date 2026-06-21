@@ -1,5 +1,4 @@
 // Procedural dungeon generation and field-of-view.
-// Ported from rogue/game/dungeon.py.
 
 import {
   MAP_WIDTH,

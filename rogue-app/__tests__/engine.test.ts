@@ -63,11 +63,15 @@ describe('Dungeon structural invariants', () => {
     }
   });
 
-  it('spawns monsters appropriate to the dungeon level', () => {
+  it('spawns valid monsters with rolled HP', () => {
     const engine = new GameEngine('monsters');
+    const letters = new Set(MONSTER_TEMPLATES.map((t) => t.letter));
     for (const m of engine.monsters) {
-      expect(m.template.minLevel).toBeLessThanOrEqual(engine.dungeonLevel);
-      expect(m.template.maxLevel).toBeGreaterThanOrEqual(engine.dungeonLevel);
+      expect(letters.has(m.template.letter)).toBe(true);
+      expect(m.level).toBe(m.template.level);
+      // HP is rolled as level d8, so it must be within [level, level*8].
+      expect(m.maxHp).toBeGreaterThanOrEqual(1);
+      expect(m.maxHp).toBeLessThanOrEqual(m.template.level * 8);
       expect(m.hp).toBeGreaterThan(0);
     }
   });

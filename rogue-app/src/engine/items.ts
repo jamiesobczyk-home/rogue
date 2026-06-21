@@ -1,5 +1,4 @@
 // Item definitions and effect handlers.
-// Ported from rogue/game/items.py.
 
 import {
   WEAPON_COLOR,

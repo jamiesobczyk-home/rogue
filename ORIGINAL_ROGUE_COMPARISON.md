@@ -251,11 +251,31 @@ biggest "feels like Rogue" payoff for the least code.
 4. ✅ Existing suites still green (28) + new `combat.test.ts` (5) locking the
    formula and the strength tables. Engine typechecks clean.
 
-> **Open decision — Python sibling.** Only the TypeScript engine was updated.
-> `rogue/game/` (Python/Kivy) is now behind, breaking the "ported 1:1" note in
-> `constants.ts`. Recommendation: make the TypeScript engine authoritative (it is
-> the deployed PWA) and either retire the Python copy or batch-sync it when we
-> reach the larger Phase 2/4 changes. Flag for the user.
+> **Python sibling — RETIRED.** The `rogue/` Python/Kivy app was removed; the
+> TypeScript engine in `rogue-app/src/engine/` is now the single source of truth.
+> README and the engine header comments were updated accordingly.
+
+**Phase 2 — Monster + XP data (high impact, low risk). ✅ DONE.**
+1. ✅ Rebuilt `MONSTER_TEMPLATES` from the authentic table: corrected names
+   (**centaur**, **black unicorn**), exp, signed AC, treasure `carry%`, per-level
+   stats, and a `damage` string of `NxS` attack groups. HP is now rolled as
+   `level`d8.
+2. ✅ Multi-attack turns: each damage group is an independent `swing()` + roll
+   (claw/claw/bite); special-only monsters (aquator, ice monster, nymph,
+   flytrap) resolve their effect instead. Vampire drains max-HP, wraith drains
+   level (split correctly).
+3. ✅ Replaced the doubling XP curve with the real `e_levels[]` thresholds.
+4. ✅ Depth spawning now uses `randmonster()` over the `lvl_mons` order
+   (`level + rnd(10) - 5`, clamped) instead of min/max-level weighting.
+5. ✅ Treasure drops gated by `carry%`.
+
+**Phase 3 — Player regeneration. ✅ DONE.**
+`Player.regen()` (Rogue `doctor()`): below level 8, heal 1 HP every
+`21 - 2*level` turns; from level 8, every 3 turns for `rnd(level-7)+1`. Wired
+into `endPlayerTurn()`. (Ring-of-regeneration speed-up lands with Phase 5 rings.)
+
+Tests after Phases 2–3: **41 green** (added `fidelity.test.ts`); engine
+typechecks clean.
 
 **Phase 2 — Monster + XP data (high impact, low risk).**
 1. Rebuild `MONSTER_TEMPLATES` from §3.3 (correct names, exp, lvl, signed AC,

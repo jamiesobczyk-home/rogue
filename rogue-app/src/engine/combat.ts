@@ -15,6 +15,13 @@
 
 import { rng } from './rng';
 
+/** Sum of `n` rolls of a `sides`-sided die. */
+export function rollDice(n: number, sides: number): number {
+  let total = 0;
+  for (let i = 0; i < n; i++) total += rng.randint(1, sides);
+  return total;
+}
+
 /** True if the attack lands. Mirrors fight.c swing(). */
 export function swing(atLvl: number, opArm: number, wplus: number): boolean {
   const res = rng.randrange(20); // rnd(20) -> 0..19
