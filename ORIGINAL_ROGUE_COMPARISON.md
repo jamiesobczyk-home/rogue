@@ -352,12 +352,35 @@ Dark-room FOV was already delivered in Phase 4.
 Tests after Phase 6: **58 green** (added maze-room connectivity + hunger
 threshold/eat-cap/starvation tests). Engine typechecks clean.
 
-### Status — all phases complete
-Phases 1–6 are done. The TypeScript engine in `rogue-app/src/engine/` is the
-single source of truth (the Python prototype was retired). Remaining known
-simplifications are documented inline above (merged identify scroll;
-bow/arrow as plain weapons; inert searching/adornment rings pending a trap
-system; the JS PRNG does not reproduce the BSD `rnd()` stream byte-for-byte).
+**Phase 7 — Traps, wandering monsters, hasted hero. ✅ DONE.**
+1. ✅ **Traps** (`trap.c`): trap door (fall to next level + fall damage), bear
+   trap (held), sleeping-gas (held/asleep), arrow (to-hit + 1d6), teleport,
+   dart (1d4 + str drain), rust (corrodes armor). Hidden on floor (`rnd(level/4)+1`
+   per level) until triggered or found; revealed as `^` (TILE_TRAP). Levitation
+   floats over them; rust respects protect-armor / maintain-armor.
+2. ✅ **Searching** — `actionSearch()` (Search button) reveals adjacent traps,
+   which finally gives the `searching` ring a job.
+3. ✅ **Wandering monsters** (`daemons.c rollwand`): every 4 turns a 1-in-6 roll
+   spawns a new hunter on an unseen floor cell (aware + aggravated), with a
+   ~70-turn cooldown and a 15-monster cap, so cleared levels stay dangerous.
+4. ✅ **Hasted hero now works**: monsters run only on alternate turns while the
+   hero is hasted (≈2× player speed). **Blindness** was already wired (FOV reveals
+   nothing while blinded).
+
+Tests after Phase 7: **64 green** (new `phase7.test.ts`: trap trigger/reveal,
+trap-door descent, levitation, search, haste cadence, wandering spawn). Engine
+typechecks clean.
+
+### Status
+Phases 1–7 are done. The TypeScript engine in `rogue-app/src/engine/` is the
+single source of truth (the Python prototype was retired).
+
+**Still open (lower-priority tail), should we want full parity:** split the five
+identify scrolls; obfuscate ring/wand appearances; hallucinate item glyphs;
+monsters carrying/dropping real items; single-staircase + amulet-gated ascent
+with depth scaling past 26; treasure rooms; scoring & tombstone; throwing /
+launchers; ISMEAN "awake in room" behavior; no-diagonal-through-doors; the JS
+PRNG does not reproduce the BSD `rnd()` stream byte-for-byte.
 
 ---
 

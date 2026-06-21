@@ -93,6 +93,7 @@ export function serializeEngine(e: GameEngine): string {
       playerStart: e.dungeon.playerStart,
       stairsDown: e.dungeon.stairsDown,
       stairsUp: e.dungeon.stairsUp,
+      traps: e.dungeon.traps,
     },
     player: {
       x: e.player.x,
@@ -219,6 +220,7 @@ export function deserializeEngine(json: string): GameEngine {
   dn.playerStart = d.dungeon.playerStart;
   dn.stairsDown = d.dungeon.stairsDown;
   dn.stairsUp = d.dungeon.stairsUp;
+  dn.traps = d.dungeon.traps ?? [];
   // Rooms need real Rect instances for inRoom()/FOV, including layout flags.
   dn.rooms = d.dungeon.rooms.map((r: any) => {
     const rect = new Rect(r.x, r.y, r.w, r.h);

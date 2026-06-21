@@ -15,6 +15,7 @@ interface Props {
   onInventory: () => void;
   onDescend: () => void;
   onAscend: () => void;
+  onSearch: () => void;
 }
 
 export function GameScreen(props: Props) {
@@ -36,6 +37,7 @@ export function GameScreen(props: Props) {
         onInventory={props.onInventory}
         onDescend={props.onDescend}
         onAscend={props.onAscend}
+        onSearch={props.onSearch}
       />
     </View>
   );

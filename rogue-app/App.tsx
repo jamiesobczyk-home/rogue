@@ -125,6 +125,7 @@ export default function App() {
         onInventory={() => setScreen('inventory')}
         onDescend={() => act((e) => e.actionDescend())}
         onAscend={() => act((e) => e.actionAscend())}
+        onSearch={() => act((e) => e.actionSearch())}
       />
     );
   }

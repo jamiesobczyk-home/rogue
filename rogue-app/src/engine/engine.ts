@@ -6,13 +6,16 @@ import {
   MAX_DUNGEON_LEVEL,
   TILE_STAIRS_DN,
   TILE_STAIRS_UP,
+  TILE_TRAP,
   CONFUSED_TURNS,
+  SLEEPING_TURNS,
+  FROZEN_TURNS,
   STARVETIME,
   RGB,
 } from './constants';
 import { rng } from './rng';
 import { swing } from './combat';
-import { Dungeon } from './dungeon';
+import { Dungeon, Trap } from './dungeon';
 import { Player } from './entities';
 import {
   Item,
@@ -82,6 +85,10 @@ export class GameEngine {
   monsterDetectionTurns = 0;
   seed: string;
 
+  private hasteToggle = false; // alternates monster turns while the hero is hasted
+  private wanderBetween = 0; // turns since last wander roll
+  private wanderCooldown = 0; // cooldown after a wanderer spawns
+
   constructor(seed?: string | number) {
     // Reseed the shared RNG so the whole run is reproducible from this seed.
     rng.reseed(seed ?? String(Date.now()));
@@ -94,7 +101,7 @@ export class GameEngine {
 
     const [px, py] = this.dungeon.playerStart;
     this.player = new Player(px, py);
-    this.dungeon.computeFov(px, py);
+    this.updateFov(px, py);
 
     this.populate();
 
@@ -150,6 +157,16 @@ export class GameEngine {
     return this.dungeon.visible[monster.y][monster.x];
   }
 
+  /** Recompute visibility — but a blinded hero sees nothing new. */
+  private updateFov(x: number, y: number): void {
+    if (this.player && this.player.blinded > 0) {
+      const vis = this.dungeon.visible;
+      for (let yy = 0; yy < MAP_HEIGHT; yy++) for (let xx = 0; xx < MAP_WIDTH; xx++) vis[yy][xx] = false;
+      return;
+    }
+    this.dungeon.computeFov(x, y);
+  }
+
   // -- Message queue -------------------------------------------------
 
   addMessage(msg: string): void {
@@ -192,8 +209,9 @@ export class GameEngine {
 
     if (this.dungeon.isWalkable(tx, ty)) {
       this.player.moveTo(tx, ty);
-      this.dungeon.computeFov(tx, ty);
+      this.updateFov(tx, ty);
       this.autoPickupGold();
+      this.checkTrap();
       this.checkStairsMessage();
       this.endPlayerTurn();
       return true;
@@ -204,6 +222,24 @@ export class GameEngine {
 
   actionWait(): void {
     if (this.state === STATE_PLAYING) this.endPlayerTurn();
+  }
+
+  /** Search adjacent cells for hidden traps (and reveal them). */
+  actionSearch(): void {
+    if (this.state !== STATE_PLAYING) return;
+    let found = 0;
+    for (const t of this.dungeon.traps) {
+      if (t.found) continue;
+      if (Math.abs(t.x - this.player.x) <= 1 && Math.abs(t.y - this.player.y) <= 1) {
+        if (rng.random() < 0.5) {
+          t.found = true;
+          this.dungeon.setTile(t.x, t.y, TILE_TRAP);
+          found += 1;
+        }
+      }
+    }
+    if (found > 0) this.addMessage(found === 1 ? 'You found a trap!' : `You found ${found} traps!`);
+    this.endPlayerTurn();
   }
 
   actionPickup(): void {
@@ -371,9 +407,136 @@ export class GameEngine {
       this.teleportPlayer();
     }
 
-    this.processMonsters();
+    this.maybeSpawnWanderer();
+
+    // A hasted hero acts twice per monster turn: only run monsters on alternate
+    // turns while hasted (Rogue 5.4.4 ISHASTE).
+    let runMonsters = true;
+    if (this.player.hasted > 0) {
+      this.hasteToggle = !this.hasteToggle;
+      runMonsters = this.hasteToggle;
+    } else {
+      this.hasteToggle = false;
+    }
+    if (runMonsters) this.processMonsters();
 
     if (!this.player.alive) this.triggerDeath();
+  }
+
+  // -- Traps ---------------------------------------------------------
+
+  private checkTrap(): void {
+    const trap = this.dungeon.trapAt(this.player.x, this.player.y);
+    if (!trap) return;
+    // Levitation floats the hero over floor traps.
+    if (this.player.levitating > 0) {
+      if (!trap.found) {
+        trap.found = true;
+        this.dungeon.setTile(trap.x, trap.y, TILE_TRAP);
+        this.addMessage('You float over a trap.');
+      }
+      return;
+    }
+    if (!trap.found) {
+      trap.found = true;
+      this.dungeon.setTile(trap.x, trap.y, TILE_TRAP);
+    }
+    this.triggerTrap(trap);
+  }
+
+  private triggerTrap(trap: Trap): void {
+    const p = this.player;
+    switch (trap.kind) {
+      case 'trapdoor':
+        this.addMessage('You fall through a trap door!');
+        if (this.dungeonLevel < MAX_DUNGEON_LEVEL) {
+          this.dungeonLevel += 1;
+          this.changeLevel();
+          p.takeDamage(rng.randint(1, this.dungeonLevel));
+        }
+        break;
+      case 'bear':
+        p.frozen = Math.max(p.frozen, rng.randint(2, 5));
+        this.addMessage('You are caught in a bear trap!');
+        break;
+      case 'sleep':
+        p.frozen = Math.max(p.frozen, rng.randint(2, SLEEPING_TURNS));
+        this.addMessage('A strange white mist envelops you and you fall asleep.');
+        break;
+      case 'arrow': {
+        if (swing(this.dungeonLevel, p.effectiveAc, 0)) {
+          const dmg = rng.randint(1, 6);
+          p.takeDamage(dmg);
+          this.addMessage(`An arrow shoots out and hits you for ${dmg} damage!`);
+        } else {
+          this.addMessage('An arrow shoots out at you — and misses.');
+        }
+        break;
+      }
+      case 'teleport':
+        this.teleportPlayer();
+        this.addMessage('You are momentarily disoriented...');
+        break;
+      case 'dart': {
+        const dmg = rng.randint(1, 4);
+        p.takeDamage(dmg);
+        let msg = `A small dart whizzes out and hits you for ${dmg} damage!`;
+        if (rng.random() < 0.4 && p.reduceStr(1)) msg += '  You feel weaker.';
+        this.addMessage(msg);
+        break;
+      }
+      case 'rust':
+        if (p.armor && !(p.armor as unknown as { protected?: boolean }).protected && !p.hasRing('maintain_armor')) {
+          p.armor.acBonus = Math.max(0, p.armor.acBonus - 1);
+          (p.armor as unknown as { enchant: number }).enchant -= 1;
+          p.recalcAc();
+          this.addMessage('A gush of water hits you — your armor weakens!');
+        } else {
+          this.addMessage('A gush of water hits you on the head.');
+        }
+        break;
+    }
+    if (!p.alive) this.triggerDeath();
+  }
+
+  // -- Wandering monsters --------------------------------------------
+
+  /** Periodically spawn a new monster that hunts the hero (daemons.c). */
+  private maybeSpawnWanderer(): void {
+    if (this.wanderCooldown > 0) {
+      this.wanderCooldown -= 1;
+      return;
+    }
+    if (this.monsters.filter((m) => m.alive).length >= 15) return;
+    this.wanderBetween += 1;
+    if (this.wanderBetween < 4) return;
+    this.wanderBetween = 0;
+    if (rng.randint(1, 6) !== 4) return;
+    this.spawnWanderer();
+    this.wanderCooldown = 70;
+  }
+
+  private spawnWanderer(): void {
+    // Find a floor cell the hero cannot currently see.
+    const spots: [number, number][] = [];
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        if (
+          this.dungeon.isWalkable(x, y) &&
+          !this.dungeon.visible[y][x] &&
+          this.monsterAt(x, y) === null &&
+          !(x === this.player.x && y === this.player.y)
+        ) {
+          spots.push([x, y]);
+        }
+      }
+    }
+    if (spots.length === 0) return;
+    const [x, y] = rng.choice(spots);
+    const m = spawnMonster(x, y, this.dungeonLevel);
+    m.aware = true;
+    m.aggravated = true;
+    this.monsters.push(m);
   }
 
   // -- Level transitions ---------------------------------------------
@@ -382,7 +545,7 @@ export class GameEngine {
     this.dungeon = this.buildDungeon();
     const [px, py] = this.dungeon.playerStart;
     this.player.moveTo(px, py);
-    this.dungeon.computeFov(px, py);
+    this.updateFov(px, py);
     this.populate();
   }
 
@@ -398,7 +561,7 @@ export class GameEngine {
     if (candidates.length > 0) {
       const [nx, ny] = rng.choice(candidates);
       this.player.moveTo(nx, ny);
-      this.dungeon.computeFov(nx, ny);
+      this.updateFov(nx, ny);
       this.addMessage('...you teleport!');
     }
   }
@@ -467,7 +630,7 @@ export class GameEngine {
     const room = this.dungeon.inRoom(this.player.x, this.player.y);
     if (room) {
       room.dark = false;
-      this.dungeon.computeFov(this.player.x, this.player.y);
+      this.updateFov(this.player.x, this.player.y);
     }
   }
 

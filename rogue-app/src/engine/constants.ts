@@ -28,6 +28,7 @@ export const TILE_CORRIDOR = 5; // Corridor passage (#)
 export const TILE_DOOR = 6; // Door             (+)
 export const TILE_STAIRS_DN = 7; // Stairs down      (>)
 export const TILE_STAIRS_UP = 8; // Stairs up        (<)
+export const TILE_TRAP = 9; // Discovered trap  (^)
 
 // Display characters (original Rogue aesthetics)
 export const TILE_CHARS: Record<number, string> = {
@@ -40,6 +41,7 @@ export const TILE_CHARS: Record<number, string> = {
   [TILE_DOOR]: '+',
   [TILE_STAIRS_DN]: '>',
   [TILE_STAIRS_UP]: '<',
+  [TILE_TRAP]: '^',
 };
 
 // ---------------------------------------------------------------------------
@@ -77,6 +79,7 @@ export const TILE_FG: Record<number, RGB> = {
   [TILE_DOOR]: BROWN,
   [TILE_STAIRS_DN]: YELLOW,
   [TILE_STAIRS_UP]: YELLOW,
+  [TILE_TRAP]: RED,
 };
 
 // Dimmed (explored but not currently visible) — ~30 % brightness

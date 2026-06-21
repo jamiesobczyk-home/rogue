@@ -19,10 +19,22 @@ import {
   TILE_DOOR,
   TILE_STAIRS_DN,
   TILE_STAIRS_UP,
+  TILE_TRAP,
 } from './constants';
 import { rng as defaultRng, RNG } from './rng';
 
 export type Pos = [number, number];
+
+// Trap kinds (Rogue 5.4.4). Hidden until triggered or found by searching.
+export const TRAP_KINDS = ['trapdoor', 'bear', 'sleep', 'arrow', 'teleport', 'dart', 'rust'] as const;
+export type TrapKind = (typeof TRAP_KINDS)[number];
+
+export interface Trap {
+  x: number;
+  y: number;
+  kind: TrapKind;
+  found: boolean;
+}
 
 const key = (x: number, y: number) => `${x},${y}`;
 
@@ -82,6 +94,7 @@ export class Dungeon {
   explored: boolean[][];
 
   rooms: Rect[] = [];
+  traps: Trap[] = [];
 
   playerStart: Pos = [0, 0];
   stairsDown: Pos | null = null;
@@ -118,8 +131,14 @@ export class Dungeon {
       t === TILE_CORRIDOR ||
       t === TILE_DOOR ||
       t === TILE_STAIRS_DN ||
-      t === TILE_STAIRS_UP
+      t === TILE_STAIRS_UP ||
+      t === TILE_TRAP
     );
+  }
+
+  trapAt(x: number, y: number): Trap | null {
+    for (const t of this.traps) if (t.x === x && t.y === y) return t;
+    return null;
   }
 
   inRoom(x: number, y: number): Rect | null {
@@ -180,6 +199,27 @@ export class Dungeon {
     this.connectRooms();
     this.placeStairs();
     this.chooseSpawns();
+    this.placeTraps();
+  }
+
+  /** Scatter hidden traps on room floor (Rogue 5.4.4 ~rnd(level/4)+1). */
+  private placeTraps(): void {
+    const ntraps = Math.min(10, this.rng.randint(1, 1 + Math.floor(this.level / 2)));
+    const taken = new Set<string>([key(this.playerStart[0], this.playerStart[1])]);
+    if (this.stairsDown) taken.add(key(this.stairsDown[0], this.stairsDown[1]));
+    if (this.stairsUp) taken.add(key(this.stairsUp[0], this.stairsUp[1]));
+
+    const solids = this.solidRooms();
+    let attempts = 0;
+    while (this.traps.length < ntraps && attempts < 300) {
+      attempts += 1;
+      const room = solids[this.rng.randrange(solids.length)];
+      const [x, y] = room.randomInterior(this.rng);
+      if (this.tile(x, y) !== TILE_FLOOR || taken.has(key(x, y))) continue;
+      taken.add(key(x, y));
+      const kind = TRAP_KINDS[this.rng.randrange(TRAP_KINDS.length)];
+      this.traps.push({ x, y, kind, found: false });
+    }
   }
 
   /** One room per cell of a 3x3 grid (rooms.c do_rooms). */
