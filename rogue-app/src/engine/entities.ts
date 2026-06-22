@@ -1,5 +1,4 @@
 // Base entity classes shared by the player, monsters, and items.
-// Ported from rogue/game/entities.py.
 
 import {
   PLAYER_START_HP,
@@ -7,12 +6,17 @@ import {
   PLAYER_START_AC,
   PLAYER_EXP_TABLE,
   HUNGER_FULL,
+  HUNGER_HUNGRY,
+  HUNGER_WEAK,
+  STOMACHSIZE,
   MAX_INVENTORY,
   WHITE,
   RGB,
+  strPlus,
+  addDam,
 } from './constants';
 import { rng } from './rng';
-import type { Item } from './items';
+import type { Item, Ring } from './items';
 
 // ---------------------------------------------------------------------------
 // Entity  (anything that occupies a tile)
@@ -140,12 +144,17 @@ export class Player extends Actor {
   inventory: Item[] = [];
   weapon: Item | null = null;
   armor: Item | null = null;
+  rings: Ring[] = []; // worn rings (max 2)
 
   private armorAc = 0;
 
   hasAmulet = false;
   hallucinating = 0;
   seeInvisible = 0;
+  levitating = 0;
+  confusingTouch = false; // scroll of monster confusion — next hit confuses
+  private regenCounter = 0;
+  private digestion = 0;
 
   constructor(x: number, y: number) {
     super(x, y, '@', WHITE, 'you', PLAYER_START_HP, [1, 4], PLAYER_START_AC, 0);
@@ -157,25 +166,48 @@ export class Player extends Actor {
     this.hunger = HUNGER_FULL;
   }
 
+  // -- Rings -------------------------------------------------------
+
+  hasRing(key: string): boolean {
+    return this.rings.some((r) => r.effectKey === key);
+  }
+
+  /** Summed magnitude of all worn rings of a kind (protection, add_str, …). */
+  ringBonus(key: string): number {
+    return this.rings.filter((r) => r.effectKey === key).reduce((s, r) => s + (r.bonus || 0), 0);
+  }
+
+  get effectiveStr(): number {
+    return this.strCur + this.ringBonus('add_str');
+  }
+
+  get canSeeInvisible(): boolean {
+    return this.seeInvisible > 0 || this.hasRing('see_invisible');
+  }
+
+  /** Lower strength unless a ring of sustain strength prevents it. */
+  reduceStr(n: number): boolean {
+    if (this.hasRing('sustain_str')) return false;
+    this.strCur = Math.max(1, this.strCur - n);
+    return true;
+  }
+
   // -- AC ----------------------------------------------------------
 
   get effectiveAc(): number {
-    return PLAYER_START_AC - this.armorAc;
+    return PLAYER_START_AC - this.armorAc - this.ringBonus('protection');
   }
 
   recalcAc(): void {
     this.armorAc = this.armor ? this.armor.acBonus : 0;
   }
 
-  // -- STR modifiers -----------------------------------------------
+  // -- STR modifiers (Rogue 5.4.4 str_plus / add_dam) --------------
 
-  get strDamageBonus(): number {
-    if (this.strCur >= 18) return 6;
-    if (this.strCur >= 16) return 4;
-    if (this.strCur >= 13) return 2;
-    if (this.strCur >= 10) return 0;
-    if (this.strCur >= 7) return -1;
-    return -2;
+  /** To-hit bonus: strength + weapon enchantment + ring of dexterity. */
+  get toHitBonus(): number {
+    const weaponPlus = this.weapon ? (this.weapon as unknown as { enchant?: number }).enchant ?? 0 : 0;
+    return strPlus(this.effectiveStr) + weaponPlus + this.ringBonus('dexterity');
   }
 
   // -- Attack ------------------------------------------------------
@@ -188,7 +220,7 @@ export class Player extends Actor {
     let dmg = 0;
     for (let i = 0; i < n; i++) dmg += rng.randint(1, sides);
     if (this.weapon) dmg += this.weapon.damageBonus;
-    dmg += this.strDamageBonus;
+    dmg += addDam(this.effectiveStr) + this.ringBonus('increase_damage');
     return Math.max(1, dmg);
   }
 
@@ -224,6 +256,8 @@ export class Player extends Actor {
         this.armor = null;
         this.recalcAc();
       }
+      const ri = this.rings.indexOf(item as unknown as Ring);
+      if (ri !== -1) this.rings.splice(ri, 1);
     }
   }
 
@@ -235,19 +269,52 @@ export class Player extends Actor {
   // -- Hunger ------------------------------------------------------
 
   tickHunger(): string | null {
+    const old = this.hunger;
     this.hunger -= 1;
-    if (this.hunger === 300) return 'You are starting to feel hungry.';
-    if (this.hunger === 150) return 'You are feeling weak!';
-    if (this.hunger === 20) return 'You are about to faint from hunger!';
-    if (this.hunger <= 0) {
-      this.hunger = 0;
-      return null; // starvation damage handled by caller
+    // Worn rings speed digestion; a ring of slow digestion offsets the cost.
+    if (this.rings.length > 0) {
+      const cost = this.rings.filter((r) => r.effectKey !== 'slow_digestion' && r.effectKey !== 'adornment').length;
+      this.digestion += cost - (this.hasRing('slow_digestion') ? 1 : 0);
+      while (this.digestion >= 3) {
+        this.hunger -= 1;
+        this.digestion -= 3;
+      }
+      while (this.digestion <= -3) {
+        this.hunger += 1;
+        this.digestion += 3;
+      }
     }
+    // Messages fire as the hero crosses each threshold (Rogue stomach()).
+    if (old > HUNGER_HUNGRY && this.hunger <= HUNGER_HUNGRY) return 'You are starting to get hungry.';
+    if (old > HUNGER_WEAK && this.hunger <= HUNGER_WEAK) return 'You are starting to feel weak.';
+    if (old > 0 && this.hunger <= 0) return 'You faint from lack of food!';
     return null;
   }
 
   eat(nutrition: number): void {
-    this.hunger = Math.min(HUNGER_FULL, this.hunger + nutrition);
+    if (this.hunger < 0) this.hunger = 0;
+    this.hunger = Math.min(STOMACHSIZE, this.hunger + nutrition);
+  }
+
+  // -- Natural healing (Rogue daemon.c doctor) ---------------------
+
+  /**
+   * Regenerate HP over time. Below level 8 the hero heals 1 HP every
+   * (21 - 2*level) turns; from level 8 on, every 3 turns for rnd(level-7)+1.
+   */
+  regen(): void {
+    if (this.hp >= this.maxHp) {
+      this.regenCounter = 0;
+      return;
+    }
+    this.regenCounter += 1;
+    let interval = this.expLevel < 8 ? Math.max(1, 21 - this.expLevel * 2) : 3;
+    if (this.hasRing('regeneration')) interval = Math.max(1, Math.floor(interval / 2));
+    if (this.regenCounter >= interval) {
+      const amount = this.expLevel < 8 ? 1 : rng.randint(1, Math.max(1, this.expLevel - 7));
+      this.heal(amount);
+      this.regenCounter = 0;
+    }
   }
 
   // -- Tick --------------------------------------------------------
@@ -259,6 +326,10 @@ export class Player extends Actor {
       if (this.hallucinating === 0) msgs.push('Everything looks normal again.');
     }
     if (this.seeInvisible > 0) this.seeInvisible -= 1;
+    if (this.levitating > 0) {
+      this.levitating -= 1;
+      if (this.levitating === 0) msgs.push('You float gently back to the ground.');
+    }
     return msgs;
   }
 }

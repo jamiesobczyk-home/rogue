@@ -1,16 +1,26 @@
 # rogue
 
-A Kivy roguelike mobile game (Android build via buildozer).
+A faithful, mobile-friendly re-implementation of the classic **Rogue** (the
+1980 dungeon crawler), built with Expo / React Native and shipped as an
+installable PWA. The game logic is being aligned with the original **Rogue
+5.4.4** C source — see [`ORIGINAL_ROGUE_COMPARISON.md`](ORIGINAL_ROGUE_COMPARISON.md)
+for the comparison and the phased fidelity plan.
 
-## Run locally
+The pure-TypeScript game engine lives in `rogue-app/src/engine/` and is the
+single source of truth (a former Python/Kivy prototype was retired).
+
+## Develop
 ```bash
-cd rogue
-pip install -r requirements_rogue.txt
-python main.py
+cd rogue-app
+npm install
+npm test          # engine unit tests (jest)
+npm start         # Expo dev server
+npm run web       # run in the browser
 ```
 
-## Build for Android
+## Build the PWA
 ```bash
-cd rogue
-buildozer android debug
+cd rogue-app
+npm run build:web
 ```
+Deployed to GitHub Pages via `.github/workflows/deploy-pages.yml`.

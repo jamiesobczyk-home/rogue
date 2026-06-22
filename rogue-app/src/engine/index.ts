@@ -3,6 +3,7 @@
 
 export * from './constants';
 export * from './rng';
+export * from './combat';
 export * from './entities';
 export * from './dungeon';
 export * from './monsters';

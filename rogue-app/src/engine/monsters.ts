@@ -1,5 +1,10 @@
 // Monster definitions and AI.
-// Ported from rogue/game/monsters.py — all 26 original Rogue monsters (A–Z).
+//
+// Stats are the authentic Rogue 5.4.4 table (extern.c `monsters[26]`): each
+// monster has a level (HP is rolled as `level`d8), a signed armor class (lower
+// is better), an experience award, a treasure carry%, and a damage string of
+// one or more `NxS` attack groups (e.g. dragon "1x8/1x8/3x10"). Depth-based
+// spawning follows the `lvl_mons` order via randmonster() in monsters.c.
 
 import { Actor, Player } from './entities';
 import {
@@ -7,11 +12,9 @@ import {
   DARK_RED,
   GREEN,
   DARK_GREEN,
-  BLUE,
   YELLOW,
   CYAN,
   MAGENTA,
-  ORANGE,
   BROWN,
   GRAY,
   DARK_GRAY,
@@ -20,9 +23,11 @@ import {
   WHITE,
   CONFUSED_TURNS,
   FROZEN_TURNS,
+  MAX_DUNGEON_LEVEL,
   RGB,
 } from './constants';
 import { rng } from './rng';
+import { swing, rollDice, parseDamage } from './combat';
 import type { Dungeon } from './dungeon';
 import type { GameEngine } from './engine';
 
@@ -34,64 +39,69 @@ export interface MonsterTemplate {
   letter: string;
   name: string;
   color: RGB;
-  minLevel: number;
-  maxLevel: number;
-  hpDice: [number, number];
-  attackDice: [number, number];
-  defense: number;
-  xpValue: number;
-  speed: number;
-  flags: string;
+  level: number; // s_lvl; HP is rolled as `level`d8
+  ac: number; // signed armor class — LOWER is better
+  xpValue: number; // base experience award
+  carry: number; // % chance to drop treasure on death
+  damage: string; // attack groups, e.g. "1x8/1x8/3x10"
+  speed: number; // actions per turn (flyers act twice)
+  flags: string; // space-separated behaviour flags
 }
 
 function mt(
   letter: string,
   name: string,
   color: RGB,
-  minLevel: number,
-  maxLevel: number,
-  hpDice: [number, number],
-  attackDice: [number, number],
-  defense: number,
+  level: number,
+  ac: number,
   xpValue: number,
+  carry: number,
+  damage: string,
   speed = 1,
   flags = '',
 ): MonsterTemplate {
-  return { letter, name, color, minLevel, maxLevel, hpDice, attackDice, defense, xpValue, speed, flags };
+  return { letter, name, color, level, ac, xpValue, carry, damage, speed, flags };
 }
 
+// Authentic stats (extern.c). Behaviour flags map the original special attacks:
+// rust_armor (aquator), hold (flytrap), freeze (ice monster/yeti), steal_gold
+// (leprechaun), steal_item (nymph), poison/str-drain (rattlesnake), confuse
+// (medusa), drain_level (wraith), drain_maxhp (vampire), invisible (phantom),
+// regenerate (troll/griffin/vampire), random_move (bat). Dragon's fire is the
+// "3x10" group in its damage string.
 export const MONSTER_TEMPLATES: MonsterTemplate[] = [
-  mt('A', 'aquator', CYAN, 5, 26, [5, 8], [0, 0], 2, 20, 1, 'rust_armor'),
-  mt('B', 'bat', DARK_GRAY, 1, 8, [1, 8], [1, 2], 3, 5, 2, 'random_move'),
-  mt('C', 'centipede', GREEN, 2, 10, [2, 4], [1, 3], 3, 15, 1, 'reduce_str'),
-  mt('D', 'dragon', RED, 10, 26, [10, 8], [4, 8], 9, 5000, 1, 'breathe_fire'),
-  mt('E', 'emu', BROWN, 1, 6, [1, 8], [1, 2], 2, 2, 1, 'aggressive'),
-  mt('F', 'venus flytrap', DARK_GREEN, 8, 26, [8, 8], [0, 0], 3, 80, 1, 'hold'),
-  mt('G', 'griffin', YELLOW, 13, 26, [13, 8], [5, 8], 5, 2000, 1, 'aggressive'),
-  mt('H', 'hobgoblin', BROWN, 1, 8, [1, 8], [1, 8], 1, 10),
-  mt('I', 'ice monster', CYAN, 1, 8, [1, 8], [0, 0], 1, 15, 1, 'freeze'),
-  mt('J', 'jabberwock', MAGENTA, 15, 26, [15, 8], [2, 12], 6, 3000),
-  mt('K', 'kestrel', LIGHT_GRAY, 1, 6, [1, 4], [1, 4], 1, 5, 2),
-  mt('L', 'leprechaun', GREEN, 3, 15, [3, 8], [1, 1], 3, 10, 1, 'steal_gold'),
-  mt('M', 'medusa', PURPLE, 8, 26, [8, 8], [3, 4], 8, 200, 1, 'confuse'),
-  mt('N', 'nymph', CYAN, 3, 14, [3, 8], [0, 0], 3, 25, 1, 'steal_item'),
-  mt('O', 'orc', GREEN, 5, 18, [5, 8], [1, 8], 6, 25),
-  mt('P', 'phantom', GRAY, 8, 26, [8, 8], [4, 6], 3, 120, 1, 'invisible'),
-  mt('Q', 'quagga', BROWN, 3, 15, [3, 8], [2, 5], 3, 30),
-  mt('R', 'rattlesnake', DARK_GREEN, 2, 12, [2, 6], [1, 6], 3, 20, 1, 'poison'),
-  mt('S', 'snake', GREEN, 1, 8, [1, 6], [1, 3], 1, 5),
-  mt('T', 'troll', DARK_GREEN, 7, 26, [6, 8], [2, 6], 4, 50, 1, 'regenerate'),
-  mt('U', 'ur-vile', DARK_RED, 7, 26, [7, 8], [1, 4], 2, 90, 1, 'cast_spell'),
-  mt('V', 'vampire', RED, 8, 26, [8, 8], [1, 10], 1, 350, 1, 'drain_level'),
-  mt('W', 'wraith', GRAY, 5, 26, [5, 8], [1, 6], 4, 55, 1, 'drain_level'),
-  mt('X', 'xeroc', YELLOW, 7, 26, [7, 8], [4, 8], 7, 100, 1, 'disguise'),
-  mt('Y', 'yeti', WHITE, 5, 20, [4, 8], [1, 6], 6, 50, 1, 'freeze'),
-  mt('Z', 'zombie', DARK_GREEN, 2, 10, [2, 8], [1, 8], 2, 6),
+  mt('A', 'aquator', CYAN, 5, 2, 20, 0, '0x0/0x0', 1, 'aggressive rust_armor'),
+  mt('B', 'bat', DARK_GRAY, 1, 3, 1, 0, '1x2', 2, 'random_move'),
+  mt('C', 'centaur', BROWN, 4, 4, 17, 15, '1x2/1x5/1x5'),
+  mt('D', 'dragon', RED, 10, -1, 5000, 100, '1x8/1x8/3x10', 1, 'aggressive'),
+  mt('E', 'emu', BROWN, 1, 7, 2, 0, '1x2', 1, 'aggressive'),
+  mt('F', 'venus flytrap', DARK_GREEN, 8, 3, 80, 0, '0x0', 1, 'aggressive hold'),
+  mt('G', 'griffin', YELLOW, 13, 2, 2000, 20, '4x3/3x5', 1, 'aggressive regenerate'),
+  mt('H', 'hobgoblin', BROWN, 1, 5, 3, 0, '1x8', 1, 'aggressive'),
+  mt('I', 'ice monster', CYAN, 1, 9, 5, 0, '0x0', 1, 'freeze'),
+  mt('J', 'jabberwock', MAGENTA, 15, 6, 3000, 70, '2x12/2x4'),
+  mt('K', 'kestrel', LIGHT_GRAY, 1, 7, 1, 0, '1x4', 2, 'aggressive'),
+  mt('L', 'leprechaun', GREEN, 3, 8, 10, 0, '1x1', 1, 'steal_gold'),
+  mt('M', 'medusa', PURPLE, 8, 2, 200, 40, '3x4/3x4/2x5', 1, 'aggressive confuse'),
+  mt('N', 'nymph', CYAN, 3, 9, 37, 100, '0x0', 1, 'steal_item'),
+  mt('O', 'orc', GREEN, 1, 6, 5, 15, '1x8'),
+  mt('P', 'phantom', GRAY, 8, 3, 120, 0, '4x4', 1, 'invisible'),
+  mt('Q', 'quagga', BROWN, 3, 3, 15, 0, '1x5/1x5', 1, 'aggressive'),
+  mt('R', 'rattlesnake', DARK_GREEN, 2, 3, 9, 0, '1x6', 1, 'aggressive poison'),
+  mt('S', 'snake', GREEN, 1, 5, 2, 0, '1x3', 1, 'aggressive'),
+  mt('T', 'troll', DARK_GREEN, 6, 4, 120, 50, '1x8/1x8/2x6', 1, 'aggressive regenerate'),
+  mt('U', 'black unicorn', DARK_RED, 7, -2, 190, 0, '1x9/1x9/2x9', 1, 'aggressive'),
+  mt('V', 'vampire', RED, 8, 1, 350, 20, '1x10', 1, 'aggressive regenerate drain_maxhp'),
+  mt('W', 'wraith', GRAY, 5, 4, 55, 0, '1x6', 1, 'drain_level'),
+  mt('X', 'xeroc', YELLOW, 7, 7, 100, 30, '4x4', 1, 'disguise'),
+  mt('Y', 'yeti', WHITE, 4, 6, 50, 30, '1x6/1x6', 1, 'freeze'),
+  mt('Z', 'zombie', DARK_GREEN, 2, 8, 6, 0, '1x8', 1, 'aggressive'),
 ];
 
-export function templatesForLevel(level: number): MonsterTemplate[] {
-  return MONSTER_TEMPLATES.filter((t) => t.minLevel <= level && level <= t.maxLevel);
-}
+// Native monster per dungeon depth 1..26 (monsters.c `lvl_mons`).
+const LVL_MONS = 'KEBSHIROZLCQANYFTWPXUMVGJD';
+
+const TEMPLATE_BY_LETTER = new Map(MONSTER_TEMPLATES.map((t) => [t.letter, t]));
 
 // ---------------------------------------------------------------------------
 // Monster instance
@@ -102,33 +112,30 @@ export class Monster extends Actor {
   flags: Set<string>;
   speed: number;
   speedCounter = 0;
+  damageGroups: [number, number][];
 
   aware = false;
   aggravated = false;
   scared = 0;
   invisible: boolean;
+  pack: import('./items').Item | null = null; // treasure carried, dropped on death
+  levelBonus = 0; // depth scaling past the Amulet level (lev_add)
 
   constructor(x: number, y: number, template: MonsterTemplate) {
-    const [n, sides] = template.hpDice;
-    let hp = 0;
-    for (let i = 0; i < n; i++) hp += rng.randint(1, sides);
-    hp = Math.max(1, hp);
-
-    super(
-      x,
-      y,
-      template.letter,
-      template.color,
-      template.name,
-      hp,
-      template.attackDice[1] > 0 ? template.attackDice : [1, 4],
-      template.defense,
-      template.xpValue,
-    );
+    const hp = Math.max(1, rollDice(template.level, 8));
+    // attackDice is unused for monsters now (damageGroups drive combat) but the
+    // Actor base still wants a pair; pass a harmless default.
+    super(x, y, template.letter, template.color, template.name, hp, [1, 4], template.ac, template.xpValue);
     this.template = template;
+    this.damageGroups = parseDamage(template.damage);
     this.flags = new Set(template.flags ? template.flags.split(' ') : []);
     this.speed = template.speed;
     this.invisible = this.flags.has('invisible');
+  }
+
+  /** Combat level for swing() (template level plus any depth scaling). */
+  get level(): number {
+    return this.template.level + this.levelBonus;
   }
 
   // -- AI tick -------------------------------------------------------
@@ -140,7 +147,13 @@ export class Monster extends Actor {
     const player = engine.player;
     const dungeon = engine.dungeon;
 
-    if (this.aggravated || engine.canMonsterSeePlayer(this)) this.aware = true;
+    if (this.aggravated || engine.canMonsterSeePlayer(this)) {
+      this.aware = true;
+    } else if (this.flags.has('aggressive')) {
+      // ISMEAN: wake the moment the hero shares the monster's room.
+      const room = dungeon.inRoom(this.x, this.y);
+      if (room && room === dungeon.inRoom(player.x, player.y)) this.aware = true;
+    }
 
     if (!this.aware) {
       if (rng.random() < 0.1 && this.flags.has('random_move')) {
@@ -198,44 +211,49 @@ export class Monster extends Actor {
   }
 
   private attack(engine: GameEngine, player: Player): string | null {
-    if (this.template.attackDice[1] === 0) return this.specialAttack(engine, player);
+    // Damage groups of all-zero sides ("0x0") mean the monster has no normal
+    // melee — its turn is a pure special attack (rust, freeze, steal, hold).
+    const meleeGroups = this.damageGroups.filter(([, sides]) => sides > 0);
+    if (meleeGroups.length === 0) return this.specialAttack(engine, player);
 
-    const hitRoll = rng.randint(1, 20);
-    if (hitRoll < player.effectiveAc) return null; // miss — no spam
+    // Each attack group is an independent to-hit + damage roll (claw/claw/bite).
+    let total = 0;
+    let landed = 0;
+    for (const [n, sides] of meleeGroups) {
+      if (!swing(this.level, player.effectiveAc, 0)) continue;
+      total += rollDice(n, sides);
+      landed += 1;
+    }
+    if (landed === 0) return null; // all swings missed — no spam
 
-    const damage = this.rollAttack();
-    player.takeDamage(damage);
-    let msg = `The ${this.name} hits you for ${damage} damage!`;
+    const article = /^[aeiou]/i.test(this.name) ? 'an' : 'a';
+    engine.deathCause = `killed by ${article} ${this.name}`;
+    player.takeDamage(total);
+    let msg = `The ${this.name} hits you for ${total} damage!`;
 
     if (this.flags.has('poison') && rng.random() < 0.5) {
-      player.strCur = Math.max(1, player.strCur - 1);
-      msg += '  You feel weak!';
-    }
-    if (this.flags.has('reduce_str') && rng.random() < 0.3) {
-      player.strCur = Math.max(1, player.strCur - 1);
-      msg += '  You feel weaker!';
+      if (player.reduceStr(1)) msg += '  You feel weak!';
     }
     if (this.flags.has('confuse') && rng.random() < 0.5) {
       player.confused = CONFUSED_TURNS;
       msg += '  You feel confused!';
     }
-    if (this.flags.has('drain_level') && rng.random() < 0.3) {
-      if (player.expLevel > 1) {
-        player.expLevel -= 1;
-        const hpLoss = rng.randint(3, 10);
-        player.maxHp = Math.max(1, player.maxHp - hpLoss);
-        player.hp = Math.min(player.hp, player.maxHp);
-        msg += `  Your life-force is drained!  You are now level ${player.expLevel}.`;
-      }
+    if (this.flags.has('drain_level') && rng.random() < 0.3 && player.expLevel > 1) {
+      player.expLevel -= 1;
+      const hpLoss = rng.randint(3, 10);
+      player.maxHp = Math.max(1, player.maxHp - hpLoss);
+      player.hp = Math.min(player.hp, player.maxHp);
+      msg += `  Your life-force is drained!  You are now level ${player.expLevel}.`;
+    }
+    if (this.flags.has('drain_maxhp') && rng.random() < 0.3) {
+      const hpLoss = rng.randint(1, 5);
+      player.maxHp = Math.max(1, player.maxHp - hpLoss);
+      player.hp = Math.min(player.hp, player.maxHp);
+      msg += '  You feel your life draining away!';
     }
     if (this.flags.has('freeze') && rng.random() < 0.4) {
       player.frozen = FROZEN_TURNS;
       msg += '  You are frozen!';
-    }
-    if (this.flags.has('breathe_fire') && rng.random() < 0.25) {
-      const extra = rng.randint(5, 20);
-      player.takeDamage(extra);
-      msg += `  The dragon breathes fire for ${extra} extra damage!`;
     }
     return msg;
   }
@@ -243,8 +261,12 @@ export class Monster extends Actor {
   private specialAttack(engine: GameEngine, player: Player): string | null {
     if (this.flags.has('rust_armor')) {
       if (player.armor) {
+        const armor = player.armor as unknown as { enchant: number; protected?: boolean };
+        if (armor.protected || player.hasRing('maintain_armor')) {
+          return `The ${this.name}'s touch fails to corrode your ${player.armor.name}.`;
+        }
         player.armor.acBonus = Math.max(0, player.armor.acBonus - 1);
-        (player.armor as unknown as { enchant: number }).enchant -= 1;
+        armor.enchant -= 1;
         player.recalcAc();
         return `The ${this.name} corrodes your ${player.armor.name}!`;
       }
@@ -272,6 +294,10 @@ export class Monster extends Actor {
     if (this.flags.has('hold')) {
       player.frozen = FROZEN_TURNS * 3;
       return `The ${this.name} grabs you!  You can't move!`;
+    }
+    if (this.flags.has('freeze')) {
+      player.frozen = FROZEN_TURNS;
+      return `The ${this.name} freezes you!`;
     }
     return null;
   }
@@ -307,19 +333,29 @@ export class Monster extends Actor {
 }
 
 // ---------------------------------------------------------------------------
-// Factory
+// Factory — randmonster() from monsters.c
 // ---------------------------------------------------------------------------
 
+/** Pick the depth-appropriate monster letter (monsters.c randmonster). */
+export function randMonsterLetter(level: number): string {
+  let d = level + (rng.randrange(10) - 5); // level-5 .. level+4
+  if (d < 1) d = rng.randint(1, 5);
+  if (d > 26) d = rng.randint(22, 26);
+  return LVL_MONS[d - 1];
+}
+
 export function spawnMonster(x: number, y: number, dungeonLevel: number): Monster {
-  let candidates = templatesForLevel(dungeonLevel);
-  if (candidates.length === 0) candidates = MONSTER_TEMPLATES.slice(0, 6);
-
-  const weights = candidates.map((t) => {
-    const ideal = (t.minLevel + t.maxLevel) / 2;
-    const dist = Math.abs(ideal - dungeonLevel);
-    return Math.max(1, 10 - Math.floor(dist));
-  });
-
-  const template = rng.choices(candidates, weights, 1)[0];
-  return new Monster(x, y, template);
+  const letter = randMonsterLetter(dungeonLevel);
+  const template = TEMPLATE_BY_LETTER.get(letter) ?? MONSTER_TEMPLATES[0];
+  const m = new Monster(x, y, template);
+  // Below the Amulet level monsters grow tougher (monsters.c lev_add).
+  const levAdd = Math.max(0, dungeonLevel - MAX_DUNGEON_LEVEL);
+  if (levAdd > 0) {
+    m.levelBonus = levAdd;
+    const extra = rollDice(levAdd, 8);
+    m.maxHp += extra;
+    m.hp += extra;
+    m.xpValue += levAdd * 10;
+  }
+  return m;
 }

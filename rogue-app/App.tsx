@@ -9,9 +9,10 @@ import { MenuScreen } from './src/ui/screens/MenuScreen';
 import { GameScreen } from './src/ui/screens/GameScreen';
 import { InventoryScreen } from './src/ui/screens/InventoryScreen';
 import { GameOverScreen } from './src/ui/screens/GameOverScreen';
+import { GuideScreen } from './src/ui/screens/GuideScreen';
 import { COLORS } from './src/ui/theme';
 
-type Screen = 'menu' | 'game' | 'inventory' | 'gameover';
+type Screen = 'menu' | 'game' | 'inventory' | 'gameover' | 'guide';
 
 export default function App() {
   const engineRef = useRef<GameEngine | null>(null);
@@ -86,13 +87,25 @@ export default function App() {
   const engine = engineRef.current;
 
   if (screen === 'menu') {
-    content = <MenuScreen hasSave={saveExists} onNewGame={newGame} onContinue={continueGame} />;
+    content = (
+      <MenuScreen
+        hasSave={saveExists}
+        onNewGame={newGame}
+        onContinue={continueGame}
+        onGuide={() => setScreen('guide')}
+      />
+    );
+  } else if (screen === 'guide') {
+    content = <GuideScreen onClose={() => setScreen('menu')} />;
   } else if (screen === 'gameover' && engine && data) {
     content = (
       <GameOverScreen
         won={engine.state === STATE_WIN}
         score={engine.score()}
         depth={data.hud.dlevel}
+        gold={data.hud.gold}
+        turns={data.hud.turn}
+        cause={engine.deathCause}
         onNewGame={newGame}
       />
     );
@@ -101,6 +114,7 @@ export default function App() {
       <InventoryScreen
         player={engine.player}
         identifyMode={engine.state === STATE_IDENTIFY}
+        identifyKind={engine.identifyKind}
         onUse={(item: Item) => {
           act((e) => e.actionUseItem(item));
           if (engineRef.current?.state === STATE_PLAYING) setScreen('game');
@@ -108,9 +122,14 @@ export default function App() {
         onDrop={(item: Item) => {
           act((e) => e.actionDropItem(item));
         }}
+        onThrow={(item: Item) => {
+          act((e) => e.actionThrowItem(item));
+          setScreen('game');
+        }}
         onIdentify={(item: Item) => {
           act((e) => e.actionIdentifyItem(item));
-          setScreen('game');
+          // A wrong-category pick is rejected and keeps us in identify mode.
+          if (engineRef.current?.state === STATE_PLAYING) setScreen('game');
         }}
         onClose={() => setScreen('game')}
       />
@@ -125,6 +144,7 @@ export default function App() {
         onInventory={() => setScreen('inventory')}
         onDescend={() => act((e) => e.actionDescend())}
         onAscend={() => act((e) => e.actionAscend())}
+        onSearch={() => act((e) => e.actionSearch())}
       />
     );
   }

@@ -50,7 +50,7 @@ describe('AUDIT 3 — Actor.tickEffects cast actually decrements/expires', () =>
 describe('AUDIT 6 — equipped weapon/armor survive save/load', () => {
   it('relinks equipped items and preserves effective AC + weapon dice', () => {
     const e = new GameEngine('equip');
-    const w = new Weapon(0, 0, 1, 2); // long sword, +2 -> dice [1,8], bonus 2+2=4
+    const w = new Weapon(0, 0, 1, 2); // long sword, +2 -> dice [3,4], bonus 0+2=2
     const a = new Armor(0, 0, 4, 1); // chain mail, +1 -> acBonus 5+1=6
     e.player.inventory.push(w, a);
     e.player.weapon = w;
@@ -65,8 +65,8 @@ describe('AUDIT 6 — equipped weapon/armor survive save/load', () => {
     expect(r.player.armor).not.toBeNull();
     expect(r.player.weapon).toBe(r.player.inventory[0]);
     expect(r.player.armor).toBe(r.player.inventory[1]);
-    expect(r.player.weapon!.damageDice).toEqual([1, 8]);
-    expect(r.player.weapon!.damageBonus).toBe(4);
+    expect(r.player.weapon!.damageDice).toEqual([3, 4]);
+    expect(r.player.weapon!.damageBonus).toBe(2);
     expect(r.player.effectiveAc).toBe(acBefore);
   });
 });
@@ -74,7 +74,7 @@ describe('AUDIT 6 — equipped weapon/armor survive save/load', () => {
 describe('AUDIT 4 — identify-scroll flow does not get stuck', () => {
   it('enters IDENTIFY then returns to PLAYING and marks the item identified', () => {
     const e = new GameEngine('ident');
-    const scroll = new Scroll(0, 0, 'identify', e.scrollReg);
+    const scroll = new Scroll(0, 0, 'id_potion', e.scrollReg);
     const potion = new Potion(0, 0, 'heal', e.potionReg);
     potion.identified = false;
     e.player.inventory.push(scroll, potion);

@@ -10,6 +10,7 @@ interface Props {
   onInventory: () => void;
   onDescend: () => void;
   onAscend: () => void;
+  onSearch: () => void;
 }
 
 function Btn({
@@ -40,7 +41,7 @@ function Btn({
   );
 }
 
-export function Controls({ onMove, onWait, onPickup, onInventory, onDescend, onAscend }: Props) {
+export function Controls({ onMove, onWait, onPickup, onInventory, onDescend, onAscend, onSearch }: Props) {
   return (
     <View style={styles.container}>
       {/* D-pad */}
@@ -71,6 +72,9 @@ export function Controls({ onMove, onWait, onPickup, onInventory, onDescend, onA
         <View style={styles.actionsRow}>
           <Btn label="▼ Down" onPress={onDescend} flex={1} />
           <Btn label="▲ Up" onPress={onAscend} flex={1} />
+        </View>
+        <View style={styles.actionsRow}>
+          <Btn label="Search" onPress={onSearch} flex={1} />
         </View>
       </View>
     </View>

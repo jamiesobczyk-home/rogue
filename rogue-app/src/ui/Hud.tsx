@@ -1,12 +1,11 @@
 // Status bar — mirrors the two-line HUD from the Kivy version.
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { RenderData, HUNGER_HUNGRY, HUNGER_WEAK, HUNGER_FAINT } from '../engine';
+import { RenderData, HUNGER_HUNGRY, HUNGER_WEAK } from '../engine';
 import { COLORS, MONO } from './theme';
 
 function hungerLabel(h: number): string {
-  if (h <= 0) return 'Starving';
-  if (h <= HUNGER_FAINT) return 'Faint';
+  if (h <= 0) return 'Faint';
   if (h <= HUNGER_WEAK) return 'Weak';
   if (h <= HUNGER_HUNGRY) return 'Hungry';
   return '';

@@ -1,5 +1,6 @@
 // Game-wide constants for the Rogue clone.
-// Ported 1:1 from rogue/game/constants.py — keep names in sync with the Python reference.
+// This TypeScript engine is the single source of truth; values are aligned with
+// the original Rogue 5.4.4 C source (see ORIGINAL_ROGUE_COMPARISON.md).
 
 // ---------------------------------------------------------------------------
 // Map dimensions
@@ -27,6 +28,7 @@ export const TILE_CORRIDOR = 5; // Corridor passage (#)
 export const TILE_DOOR = 6; // Door             (+)
 export const TILE_STAIRS_DN = 7; // Stairs down      (>)
 export const TILE_STAIRS_UP = 8; // Stairs up        (<)
+export const TILE_TRAP = 9; // Discovered trap  (^)
 
 // Display characters (original Rogue aesthetics)
 export const TILE_CHARS: Record<number, string> = {
@@ -39,6 +41,7 @@ export const TILE_CHARS: Record<number, string> = {
   [TILE_DOOR]: '+',
   [TILE_STAIRS_DN]: '>',
   [TILE_STAIRS_UP]: '<',
+  [TILE_TRAP]: '^',
 };
 
 // ---------------------------------------------------------------------------
@@ -76,6 +79,7 @@ export const TILE_FG: Record<number, RGB> = {
   [TILE_DOOR]: BROWN,
   [TILE_STAIRS_DN]: YELLOW,
   [TILE_STAIRS_UP]: YELLOW,
+  [TILE_TRAP]: RED,
 };
 
 // Dimmed (explored but not currently visible) — ~30 % brightness
@@ -107,25 +111,49 @@ export const PLAYER_START_HP = 12;
 export const PLAYER_START_STR = 16;
 export const PLAYER_START_AC = 10; // Lower is better (Rogue/D&D convention)
 export const PLAYER_START_EXP = 1;
+// Experience needed to advance FROM each level (index = current level). Values
+// are the original Rogue 5.4.4 e_levels[] thresholds (extern.c); index 0 is
+// unused. e.g. reaching level 2 costs 10 XP, level 8 costs 1300 (not 1280).
 export const PLAYER_EXP_TABLE = [
-  0, 10, 20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 10240, 20480, 40960, 81920, 163840, 327680,
-  655360, 1310720, 2621440, 5242880, 10485760, 20971520, 41943040, 83886080, 167772160,
+  0, 10, 20, 40, 80, 160, 320, 640, 1300, 2600, 5200, 13000, 26000, 50000, 100000, 200000, 400000,
+  800000, 2000000, 4000000, 8000000,
 ];
 
 // ---------------------------------------------------------------------------
-// Hunger system  (turns remaining)
+// Strength modifier tables  (Rogue 5.4.4 fight.c)
+// Indexed directly by the strength value (0..31). str_plus adjusts to-hit,
+// add_dam adjusts damage. At the starting STR 16: strPlus=0, addDam=1.
 // ---------------------------------------------------------------------------
-export const HUNGER_FULL = 1300;
-export const HUNGER_HUNGRY = 300;
-export const HUNGER_WEAK = 150;
-export const HUNGER_FAINT = 20;
+export const STR_MAX = 31;
+
+export const STR_PLUS = [
+  -7, -6, -5, -4, -3, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3,
+];
+export const ADD_DAM = [
+  -7, -6, -5, -4, -3, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 3, 3, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6,
+];
+
+const clampStr = (str: number): number => Math.max(0, Math.min(STR_MAX, Math.floor(str)));
+export const strPlus = (str: number): number => STR_PLUS[clampStr(str)];
+export const addDam = (str: number): number => ADD_DAM[clampStr(str)];
+
+// ---------------------------------------------------------------------------
+// Hunger system  (food_left units; Rogue 5.4.4 rogue.h)
+// ---------------------------------------------------------------------------
+export const HUNGERTIME = 1300; // food a ration restores
+export const STOMACHSIZE = 2000; // max food_left
+export const MORETIME = 150; // weak threshold
+export const STARVETIME = 850; // turns at <=0 before death
+
+export const HUNGER_FULL = HUNGERTIME; // food_left at game start
+export const HUNGER_HUNGRY = 2 * MORETIME; // 300 — "getting hungry"
+export const HUNGER_WEAK = MORETIME; // 150 — "feel weak"
+export const HUNGER_FAINT = 0; // fainting from hunger
 
 export const HUNGER_LABELS: Record<number, string> = {
-  [HUNGER_FULL]: 'Full',
   [HUNGER_HUNGRY]: 'Hungry',
   [HUNGER_WEAK]: 'Weak',
   [HUNGER_FAINT]: 'Faint',
-  0: 'Starving',
 };
 
 // ---------------------------------------------------------------------------
