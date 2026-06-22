@@ -79,13 +79,32 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
-  e.respondWith(
-    caches.match(e.request).then((hit) => {
-      if (hit) return hit;
-      return fetch(e.request)
+  const req = e.request;
+
+  // Network-first for page navigations so a fresh deploy shows on the next
+  // launch (no "open twice" dance); fall back to the cached shell offline.
+  if (req.mode === 'navigate') {
+    e.respondWith(
+      fetch(req)
         .then((res) => {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+          return res;
+        })
+        .catch(() => caches.match(req).then((hit) => hit || caches.match('${withBase('/')}'))),
+    );
+    return;
+  }
+
+  // Cache-first for everything else — the JS bundles are content-hashed, so a
+  // new build emits new filenames that never collide with stale cache entries.
+  e.respondWith(
+    caches.match(req).then((hit) => {
+      if (hit) return hit;
+      return fetch(req)
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
           return res;
         })
         .catch(() => caches.match('${withBase('/')}'));
