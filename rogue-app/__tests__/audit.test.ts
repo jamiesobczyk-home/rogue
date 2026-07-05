@@ -61,10 +61,13 @@ describe('AUDIT 6 — equipped weapon/armor survive save/load', () => {
 
     const r = deserializeEngine(serializeEngine(e));
     // Equipped references must point at the restored inventory items, not nulls.
+    // (The starting pack occupies the first slots, so match by identity/name.)
     expect(r.player.weapon).not.toBeNull();
     expect(r.player.armor).not.toBeNull();
-    expect(r.player.weapon).toBe(r.player.inventory[0]);
-    expect(r.player.armor).toBe(r.player.inventory[1]);
+    expect(r.player.inventory).toContain(r.player.weapon);
+    expect(r.player.inventory).toContain(r.player.armor);
+    expect(r.player.weapon!.name).toBe('long sword');
+    expect(r.player.armor!.name).toBe('chain mail');
     expect(r.player.weapon!.damageDice).toEqual([3, 4]);
     expect(r.player.weapon!.damageBonus).toBe(2);
     expect(r.player.effectiveAc).toBe(acBefore);

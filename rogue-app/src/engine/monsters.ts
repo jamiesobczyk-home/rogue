@@ -100,6 +100,9 @@ export const MONSTER_TEMPLATES: MonsterTemplate[] = [
 
 // Native monster per dungeon depth 1..26 (monsters.c `lvl_mons`).
 const LVL_MONS = 'KEBSHIROZLCQANYFTWPXUMVGJD';
+// Wanderer table (monsters.c `wand_mons`) — '.' marks letters that never
+// wander (I, L, N, F, X, D in the original).
+const WAND_MONS = 'KEBSH.ROZ.CQA.Y.TWP.UMVGJ.';
 
 const TEMPLATE_BY_LETTER = new Map(MONSTER_TEMPLATES.map((t) => [t.letter, t]));
 
@@ -120,6 +123,7 @@ export class Monster extends Actor {
   invisible: boolean;
   pack: import('./items').Item | null = null; // treasure carried, dropped on death
   levelBonus = 0; // depth scaling past the Amulet level (lev_add)
+  disguiseChar: string | null = null; // xeroc poses as an item until it wakes
 
   constructor(x: number, y: number, template: MonsterTemplate) {
     const hp = Math.max(1, rollDice(template.level, 8));
@@ -131,6 +135,10 @@ export class Monster extends Actor {
     this.flags = new Set(template.flags ? template.flags.split(' ') : []);
     this.speed = template.speed;
     this.invisible = this.flags.has('invisible');
+    if (this.flags.has('disguise')) {
+      const glyphs = '!?/=)[%*,$';
+      this.disguiseChar = glyphs[rng.randrange(glyphs.length)];
+    }
   }
 
   /** Combat level for swing() (template level plus any depth scaling). */
@@ -157,7 +165,7 @@ export class Monster extends Actor {
 
     if (!this.aware) {
       if (rng.random() < 0.1 && this.flags.has('random_move')) {
-        this.randomStep(dungeon, engine.occupiedPositions());
+        this.randomStep(dungeon, this.blockedSquares(engine));
       }
       return null;
     }
@@ -170,6 +178,13 @@ export class Monster extends Actor {
     return msg;
   }
 
+  /** Squares this monster refuses to enter: occupied cells + dropped scare-monster scrolls. */
+  private blockedSquares(engine: GameEngine): Set<string> {
+    const blocked = engine.occupiedPositions();
+    for (const k of engine.scareSquares()) blocked.add(k);
+    return blocked;
+  }
+
   private takeSingleAction(engine: GameEngine, player: Player, dungeon: Dungeon): string | null {
     const dx = player.x - this.x;
     const dy = player.y - this.y;
@@ -177,7 +192,7 @@ export class Monster extends Actor {
 
     if (this.scared > 0) {
       this.scared -= 1;
-      this.moveAwayFrom(player, dungeon, engine.occupiedPositions());
+      this.moveAwayFrom(player, dungeon, this.blockedSquares(engine));
       return null;
     }
 
@@ -186,16 +201,16 @@ export class Monster extends Actor {
     }
 
     if (this.confused > 0) {
-      this.randomStep(dungeon, engine.occupiedPositions());
+      this.randomStep(dungeon, this.blockedSquares(engine));
       return null;
     }
 
     if (this.flags.has('random_move')) {
-      this.randomStep(dungeon, engine.occupiedPositions());
+      this.randomStep(dungeon, this.blockedSquares(engine));
       return null;
     }
 
-    const occupied = engine.occupiedPositions();
+    const occupied = this.blockedSquares(engine);
     occupied.delete(`${this.x},${this.y}`);
     const path = dungeon.pathTo(this.x, this.y, player.x, player.y, occupied);
     if (path.length > 0) {
@@ -205,7 +220,7 @@ export class Monster extends Actor {
         this.y = ny;
       }
     } else {
-      this.randomStep(dungeon, engine.occupiedPositions());
+      this.randomStep(dungeon, this.blockedSquares(engine));
     }
     return null;
   }
@@ -337,15 +352,20 @@ export class Monster extends Actor {
 // ---------------------------------------------------------------------------
 
 /** Pick the depth-appropriate monster letter (monsters.c randmonster). */
-export function randMonsterLetter(level: number): string {
-  let d = level + (rng.randrange(10) - 5); // level-5 .. level+4
-  if (d < 1) d = rng.randint(1, 5);
-  if (d > 26) d = rng.randint(22, 26);
-  return LVL_MONS[d - 1];
+export function randMonsterLetter(level: number, wander = false): string {
+  const mons = wander ? WAND_MONS : LVL_MONS;
+  let letter: string;
+  do {
+    let d = level + (rng.randrange(10) - 5); // level-5 .. level+4
+    if (d < 1) d = rng.randint(1, 5);
+    if (d > 26) d = rng.randint(22, 26);
+    letter = mons[d - 1];
+  } while (letter === '.'); // some letters never wander (wand_mons gaps)
+  return letter;
 }
 
-export function spawnMonster(x: number, y: number, dungeonLevel: number): Monster {
-  const letter = randMonsterLetter(dungeonLevel);
+export function spawnMonster(x: number, y: number, dungeonLevel: number, wander = false): Monster {
+  const letter = randMonsterLetter(dungeonLevel, wander);
   const template = TEMPLATE_BY_LETTER.get(letter) ?? MONSTER_TEMPLATES[0];
   const m = new Monster(x, y, template);
   // Below the Amulet level monsters grow tougher (monsters.c lev_add).

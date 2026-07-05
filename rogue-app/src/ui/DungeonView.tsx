@@ -97,33 +97,52 @@ function dimColor(c: RGB, dim: boolean): string {
   return rgb([Math.floor((c[0] * 3) / 10), Math.floor((c[1] * 3) / 10), Math.floor((c[2] * 3) / 10)]);
 }
 
+interface Run {
+  text: string;
+  color: string;
+}
+
+/** Collapse a row of glyphs into runs of consecutive same-colour text. */
+function toRuns(line: Glyph[]): Run[] {
+  const runs: Run[] = [];
+  for (const g of line) {
+    const last = runs[runs.length - 1];
+    if (last && last.color === g.color) last.text += g.ch;
+    else runs.push({ text: g.ch, color: g.color });
+  }
+  return runs;
+}
+
 export function DungeonView({ data, cellSize }: { data: RenderData; cellSize: number }) {
-  const grid = useMemo(() => buildViewport(data), [data]);
+  // One <Text> per row with colour-run children (instead of one per cell)
+  // cuts the element count ~6x — the render hot path on low-end devices.
+  const rows = useMemo(() => buildViewport(data).map(toRuns), [data]);
   const fontSize = Math.floor(cellSize * 0.95);
   const lineHeight = cellSize;
+  // Monospace advance is ~0.6em; pad with letterSpacing so cells stay square.
+  const letterSpacing = Math.max(0, cellSize - fontSize * 0.6);
 
   return (
     <View style={styles.container}>
-      {grid.map((line, r) => (
-        <View key={r} style={[styles.row, { height: lineHeight }]}>
-          {line.map((g, c) => (
-            <Text
-              key={c}
-              allowFontScaling={false}
-              style={{
-                width: cellSize,
-                height: lineHeight,
-                lineHeight,
-                fontSize,
-                fontFamily: MONO,
-                color: g.color,
-                textAlign: 'center',
-              }}
-            >
-              {g.ch}
+      {rows.map((runs, r) => (
+        <Text
+          key={r}
+          allowFontScaling={false}
+          numberOfLines={1}
+          style={{
+            height: lineHeight,
+            lineHeight,
+            fontSize,
+            fontFamily: MONO,
+            letterSpacing,
+          }}
+        >
+          {runs.map((run, i) => (
+            <Text key={i} style={{ color: run.color }}>
+              {run.text}
             </Text>
           ))}
-        </View>
+        </Text>
       ))}
     </View>
   );
@@ -135,8 +154,5 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: COLORS.bg,
     alignSelf: 'center',
-  },
-  row: {
-    flexDirection: 'row',
   },
 });

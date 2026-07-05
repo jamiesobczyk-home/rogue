@@ -1,6 +1,6 @@
-The MIT License (MIT)
+MIT License
 
-Copyright (c) 2015-present 650 Industries, Inc. (aka Expo)
+Copyright (c) 2026 Jamie Sobczyk
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+Attribution
+
+This project is a clean-room TypeScript re-implementation of the game
+mechanics of Rogue 5.4.4 by Michael Toy, Ken Arnold, and Glenn Wichman.
+No code from the original C source is included; game formulas and data
+tables were derived from the publicly released BSD Rogue 5.4.4 sources,
+which their authors made available under a BSD-style license.
+
+Third-party dependencies (Expo, React Native, etc.) remain under their own
+licenses; see each package's LICENSE in node_modules.

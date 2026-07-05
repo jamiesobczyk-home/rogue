@@ -117,11 +117,31 @@ export class GameEngine {
 
     const [px, py] = this.dungeon.playerStart;
     this.player = new Player(px, py);
+    this.giveStartingPack();
     this.updateFov(px, py);
 
     this.populate();
 
     this.addMessage('Welcome to Rogue!  Your quest is to retrieve the Amulet of Yendor.');
+  }
+
+  /**
+   * The original starting pack (init.c init_player): 1 food ration, +1 ring
+   * mail (worn), a +1,+1 mace (wielded), a +1 short bow, and 25–39 arrows —
+   * all pre-identified.
+   */
+  private giveStartingPack(): void {
+    const p = this.player;
+    const food = new Food(0, 0, 0);
+    const mace = new Weapon(0, 0, 0, 1); // mace, +1/+1
+    const bow = new Weapon(0, 0, 2, 1); // short bow, +1
+    const arrows = new Weapon(0, 0, 3, 0); // arrows, +0
+    arrows.count = rng.randint(25, 39); // rnd(15) + 25
+    const mail = new Armor(0, 0, 1, 1); // ring mail, +1 -> AC 6
+    for (const it of [food, mace, bow, arrows, mail]) p.addItem(it);
+    p.weapon = mace;
+    p.armor = mail;
+    p.recalcAc();
   }
 
   // -- Dungeon management --------------------------------------------
@@ -193,6 +213,15 @@ export class GameEngine {
   monsterAt(x: number, y: number): Monster | null {
     for (const m of this.monsters) if (m.alive && m.x === x && m.y === y) return m;
     return null;
+  }
+
+  /** Squares holding a dropped scroll of scare monster — monsters won't enter. */
+  scareSquares(): Set<string> {
+    const squares = new Set<string>();
+    for (const it of this.items) {
+      if (it instanceof Scroll && it.effectKey === 'scare_monster') squares.add(`${it.x},${it.y}`);
+    }
+    return squares;
   }
 
   itemsAt(x: number, y: number): Item[] {
@@ -318,7 +347,11 @@ export class GameEngine {
         const slot = this.player.addItem(item);
         if (slot) {
           this.removeItemFromMap(item);
-          this.addMessage(`(${slot}) ${item.displayName()}`);
+          // Missiles may have merged into an existing stack — show that stack.
+          const shown = this.player.inventory.includes(item)
+            ? item
+            : this.player.inventory.find((i) => i.kind === item.kind && i.name === item.name) ?? item;
+          this.addMessage(`(${slot}) ${shown.displayName()}`);
         } else {
           this.addMessage('Your pack is too full.');
           break;
@@ -394,18 +427,26 @@ export class GameEngine {
     if (this.state !== STATE_PLAYING) return;
     const p = this.player;
     const target = this.nearestVisibleMonster();
-    p.removeItem(item);
+
+    // Missiles stack: peel a single projectile off the pile, keep the rest.
+    let missile = item;
+    if (item instanceof Weapon && item.count > 1) {
+      item.count -= 1;
+      missile = new Weapon(0, 0, item.templateIdx, item.enchant, item.cursed);
+    } else {
+      p.removeItem(item);
+    }
 
     if (!target) {
-      item.x = p.x;
-      item.y = p.y;
-      this.items.push(item);
-      this.addMessage(`You throw the ${item.displayName()}, but there is nothing to hit.`);
+      missile.x = p.x;
+      missile.y = p.y;
+      this.items.push(missile);
+      this.addMessage(`You throw the ${missile.displayName()}, but there is nothing to hit.`);
       this.endPlayerTurn();
       return;
     }
 
-    const w = item instanceof Weapon ? item : null;
+    const w = missile instanceof Weapon ? missile : null;
     const wplus = p.toHitBonus + (w ? w.enchant : 0);
     if (w && swing(p.expLevel, target.defense, wplus)) {
       let dmg = rollDice(w.hurlDice[0], w.hurlDice[1]) + addDam(p.effectiveStr) + w.enchant;
@@ -415,7 +456,7 @@ export class GameEngine {
       }
       dmg = Math.max(1, dmg);
       target.takeDamage(dmg);
-      this.addMessage(`The ${item.displayName()} hits the ${target.name} for ${dmg} damage!`);
+      this.addMessage(`The ${missile.displayName()} hits the ${target.name} for ${dmg} damage!`);
       if (!target.alive) {
         this.addMessage(`You killed the ${target.name}!`);
         this.removeMonster(target);
@@ -424,13 +465,13 @@ export class GameEngine {
         if (lvl) this.addMessage(lvl);
       }
     } else {
-      this.addMessage(`The ${item.displayName()} misses the ${target.name}.`);
+      this.addMessage(`The ${missile.displayName()} misses the ${target.name}.`);
     }
 
     // The thrown item lands on the target's square.
-    item.x = target.x;
-    item.y = target.y;
-    this.items.push(item);
+    missile.x = target.x;
+    missile.y = target.y;
+    this.items.push(missile);
     this.endPlayerTurn();
   }
 
@@ -531,14 +572,15 @@ export class GameEngine {
     const hungerMsg = this.player.tickHunger();
     if (hungerMsg) this.addMessage(hungerMsg);
     if (this.player.hunger <= 0) {
-      // Starving: occasional fainting damage, death after STARVETIME turns.
+      // Starving: the hero randomly FAINTS (loses turns, daemons.c), and dies
+      // only after STARVETIME turns below zero — no chip damage.
       if (this.player.hunger < -STARVETIME) {
         this.player.hp = 0;
         this.deathCause = 'died of starvation';
         this.addMessage('You have starved to death.');
-      } else if (rng.random() < 0.2) {
-        this.deathCause = 'died of starvation';
-        this.player.takeDamage(1);
+      } else if (this.player.frozen === 0 && rng.random() < 0.2) {
+        this.player.frozen = rng.randint(4, 8);
+        this.addMessage('You faint from lack of food.');
       }
     }
 
@@ -676,7 +718,8 @@ export class GameEngine {
     }
     if (spots.length === 0) return;
     const [x, y] = rng.choice(spots);
-    const m = spawnMonster(x, y, this.dungeonLevel);
+    // Wanderers draw from the original wand_mons table (some letters never wander).
+    const m = spawnMonster(x, y, this.dungeonLevel, true);
     m.aware = true;
     m.aggravated = true;
     this.monsters.push(m);
@@ -938,6 +981,9 @@ export class GameEngine {
         monsterData.push([m.x, m.y, ch, m.color, visible]);
       } else if (m.invisible && !p.canSeeInvisible) {
         // don't show invisible monsters
+      } else if (m.disguiseChar && !m.aware) {
+        // A xeroc poses as an innocent item until it wakes.
+        monsterData.push([m.x, m.y, m.disguiseChar, m.color, visible]);
       } else {
         monsterData.push([m.x, m.y, m.char, m.color, visible]);
       }

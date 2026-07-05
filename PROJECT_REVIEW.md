@@ -137,22 +137,28 @@ app/persistence boundary:
 
 ## 5. Recommended change list (prioritized)
 
-| # | Change | Type | Effort |
-|---|---|---|---|
-| 1 | Add original starting pack (food, +1 ring mail, +1/+1 mace, +1 bow, 25–39 arrows) | fidelity | S |
-| 2 | Fix sleep / scare / hold-monster scroll behaviors | fidelity | S |
-| 3 | Fix Weapon (and Armor) save round-trip: serialize template index | bug | S |
-| 4 | Debounce saves + compress map layers | perf | M |
-| 5 | Original trap gating + hunger fainting | fidelity | S |
-| 6 | `wand_mons` table for wanderers; raise-level set-not-add; xeroc disguise or drop flag | fidelity | S |
-| 7 | Replace repo LICENSE with project license + Rogue attribution | legal | S |
-| 8 | Upgrade Expo SDK 54 → 56; clear npm audit | security/maint | M |
-| 9 | Pin GitHub Action SHAs; optional CSP meta | security | S |
-| 10 | Row-level text rendering in DungeonView | perf | M |
-| 11 | Save-schema validation (pre-req for leaderboards) | security | M |
+*Status update (2026-07-05): all 11 items were implemented in v1.1.0 — see
+[CHANGELOG.md](CHANGELOG.md). Verified: 92 tests green, typecheck clean,
+`npm audit` 0 vulnerabilities, and a browser smoke test of the exported PWA
+(menu → new game → move) with the CSP active.*
 
-Items 1–3 change gameplay/persistence and should land before any store
-release; 4–6 next; 7–9 before monetization work begins.
+| # | Change | Type | Status |
+|---|---|---|---|
+| 1 | Add original starting pack (food, +1 ring mail, +1/+1 mace, +1 bow, 25–39 arrows; missiles stack) | fidelity | ✅ fixed |
+| 2 | Fix sleep / scare / hold-monster scroll behaviors | fidelity | ✅ fixed |
+| 3 | Fix Weapon (and Armor) save round-trip: serialize template index | bug | ✅ fixed |
+| 4 | Debounce saves + compress map layers | perf | ✅ fixed |
+| 5 | Original trap gating + hunger fainting | fidelity | ✅ fixed |
+| 6 | `wand_mons` table for wanderers; raise-level set-not-add; xeroc disguise | fidelity | ✅ fixed |
+| 7 | Replace repo LICENSE with project license + Rogue attribution | legal | ✅ fixed |
+| 8 | Upgrade Expo SDK 54 → 56; clear npm audit | security/maint | ✅ fixed (Expo 56.0.14, RN 0.85.3, 0 vulns) |
+| 9 | Pin GitHub Action SHAs; CSP meta | security | ✅ fixed |
+| 10 | Row-level text rendering in DungeonView | perf | ✅ fixed |
+| 11 | Save-schema validation (pre-req for leaderboards) | security | ✅ fixed |
+
+Remaining deliberate deviations (documented, not planned): JS PRNG instead of
+the BSD `rnd()` stream, auto-targeted wands/throws, amulet at the level-26
+down-stairs, house-rule score bonus, no secret doors.
 
 ## 6. Monetization
 
