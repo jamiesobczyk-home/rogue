@@ -4,7 +4,10 @@ A faithful, mobile-friendly re-implementation of the classic **Rogue** (the
 1980 dungeon crawler), built with Expo / React Native and shipped as an
 installable PWA. The game logic is being aligned with the original **Rogue
 5.4.4** C source — see [`ORIGINAL_ROGUE_COMPARISON.md`](ORIGINAL_ROGUE_COMPARISON.md)
-for the comparison and the phased fidelity plan.
+for the comparison and the phased fidelity plan,
+[`PROJECT_REVIEW.md`](PROJECT_REVIEW.md) for the full fidelity/efficiency/security
+review, and [`MONETIZATION_PLAN.md`](MONETIZATION_PLAN.md) for the monetization
+execution brief.
 
 The pure-TypeScript game engine lives in `rogue-app/src/engine/` and is the
 single source of truth (a former Python/Kivy prototype was retired).
