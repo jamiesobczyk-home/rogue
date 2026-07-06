@@ -202,9 +202,10 @@ export class Dungeon {
     this.placeTraps();
   }
 
-  /** Scatter hidden traps on room floor (Rogue 5.4.4 ~rnd(level/4)+1). */
+  /** Scatter hidden traps on room floor (rooms.c: only when rnd(10) < level, count rnd(level/4)+1). */
   private placeTraps(): void {
-    const ntraps = Math.min(10, this.rng.randint(1, 1 + Math.floor(this.level / 2)));
+    if (this.rng.randrange(10) >= this.level) return; // shallow levels are usually trap-free
+    const ntraps = Math.min(10, this.rng.randrange(Math.max(1, Math.floor(this.level / 4))) + 1);
     const taken = new Set<string>([key(this.playerStart[0], this.playerStart[1])]);
     if (this.stairsDown) taken.add(key(this.stairsDown[0], this.stairsDown[1]));
     if (this.stairsUp) taken.add(key(this.stairsUp[0], this.stairsUp[1]));

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { COLORS, MONO } from '../theme';
+import { APP_VERSION } from '../../version';
 
 interface Props {
   hasSave: boolean;
@@ -51,6 +52,10 @@ export function MenuScreen({ hasSave, onNewGame, onContinue, onGuide }: Props) {
       <Text style={styles.help} allowFontScaling={false}>
         Move with the D-pad. Bump enemies to attack. Find {'>'} stairs to descend
         through 26 levels, grab the Amulet, then climb back out alive.
+      </Text>
+
+      <Text style={styles.version} allowFontScaling={false}>
+        v{APP_VERSION}
       </Text>
     </View>
   );
@@ -109,5 +114,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 56,
     lineHeight: 18,
+  },
+  version: {
+    position: 'absolute',
+    bottom: 12,
+    fontFamily: MONO,
+    fontSize: 11,
+    color: COLORS.textDim,
   },
 });

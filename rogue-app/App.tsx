@@ -16,6 +16,7 @@ type Screen = 'menu' | 'game' | 'inventory' | 'gameover' | 'guide';
 
 export default function App() {
   const engineRef = useRef<GameEngine | null>(null);
+  const lastSaveRef = useRef<{ turn: number; level: number }>({ turn: -1, level: -1 });
   const [data, setData] = useState<RenderData | null>(null);
   const [screen, setScreen] = useState<Screen>('menu');
   const [saveExists, setSaveExists] = useState(false);
@@ -34,7 +35,11 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  /** Refresh render data and react to terminal/identify states. Persists on each turn. */
+  /**
+   * Refresh render data and react to terminal/identify states. Saves are
+   * debounced — serializing the whole engine every keypress is the app's
+   * biggest cost — and always flushed on level change and app background.
+   */
   const refresh = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
@@ -47,7 +52,11 @@ export default function App() {
     } else if (engine.state === STATE_IDENTIFY) {
       setScreen('inventory');
     } else {
-      saveGame(engine);
+      const last = lastSaveRef.current;
+      if (engine.dungeonLevel !== last.level || engine.turn - last.turn >= 10) {
+        lastSaveRef.current = { turn: engine.turn, level: engine.dungeonLevel };
+        saveGame(engine);
+      }
     }
   }, []);
 
@@ -67,6 +76,7 @@ export default function App() {
     setData(engineRef.current.getRenderData());
     setScreen('game');
     saveGame(engineRef.current);
+    lastSaveRef.current = { turn: engineRef.current.turn, level: engineRef.current.dungeonLevel };
     setSaveExists(true);
   }, []);
 

@@ -137,15 +137,18 @@ const WEAPONS: WeaponDef[] = [
 
 export class Weapon extends Item {
   kind = 'weapon';
+  templateIdx: number; // index into WEAPONS — serialized so saves round-trip
   enchant: number;
   hurlDice: [number, number];
   missile: boolean;
   launcher: string | null;
+  count = 1; // missiles stack (original o_count: 25–39 arrows in one slot)
 
   constructor(x: number, y: number, templateIdx?: number, enchant = 0, cursed = false) {
     const idx = templateIdx ?? WEAPONS.indexOf(pickByProb(WEAPONS));
     const def = WEAPONS[idx];
     super(x, y, ')', WEAPON_COLOR, def.name, 1, def.value);
+    this.templateIdx = idx;
     this.damageDice = def.dice;
     this.hurlDice = def.hurl;
     this.missile = def.missile ?? false;
@@ -157,7 +160,8 @@ export class Weapon extends Item {
 
   displayName(): string {
     const sign = this.enchant >= 0 ? '+' : '';
-    let base = `${this.name} (${sign}${this.enchant})`;
+    const label = this.count > 1 ? `${this.count} ${this.name}s` : this.name;
+    let base = `${label} (${sign}${this.enchant})`;
     if (this.cursed) base += ' {cursed}';
     return base;
   }
@@ -198,6 +202,7 @@ const ARMORS: ArmorDef[] = [
 
 export class Armor extends Item {
   kind = 'armor';
+  templateIdx: number; // index into ARMORS — serialized so saves round-trip
   enchant: number;
   protected = false; // scroll of protect armor / ring of maintain armor
 
@@ -205,6 +210,7 @@ export class Armor extends Item {
     const idx = templateIdx ?? ARMORS.indexOf(pickByProb(ARMORS));
     const def = ARMORS[idx];
     super(x, y, '[', ARMOR_COLOR, def.name, 1, def.value);
+    this.templateIdx = idx;
     this.acBonus = def.ac + enchant;
     this.enchant = enchant;
     this.cursed = cursed;
@@ -352,8 +358,11 @@ export class Potion extends Item {
       return 'You can now see invisible creatures.';
     }
     if (key === 'raise_level') {
-      const msg = player.gainExp(PLAYER_EXP_TABLE[Math.min(player.expLevel, PLAYER_EXP_TABLE.length - 1)]);
-      return msg || 'Your experience increases.';
+      // Original sets experience TO the next threshold (potions.c), not add.
+      const next = PLAYER_EXP_TABLE[Math.min(player.expLevel, PLAYER_EXP_TABLE.length - 1)];
+      player.expPts = Math.max(player.expPts, next);
+      const msg = player.gainExp(0);
+      return msg || 'You suddenly feel much more skillful.';
     }
     if (key === 'haste_self') {
       player.hasted = HASTED_TURNS;
@@ -485,12 +494,20 @@ export class Scroll extends Item {
       return 'You see a vision of the dungeon around you.';
     }
     if (key === 'hold_monster') {
-      for (const m of engine.monsters) m.frozen = 15;
-      return 'The monsters around you are frozen!';
+      // Original (scrolls.c): holds monsters within 2 squares of the hero.
+      let held = 0;
+      for (const m of engine.monsters) {
+        if (Math.abs(m.x - player.x) <= 2 && Math.abs(m.y - player.y) <= 2) {
+          m.frozen = 15;
+          held += 1;
+        }
+      }
+      return held > 0 ? 'The monsters around you freeze in place!' : 'You feel a strange sense of loss.';
     }
     if (key === 'sleep') {
-      for (const m of engine.monsters) m.sleeping = rng.randint(5, 15);
-      return 'The monsters fall asleep.';
+      // A bad scroll — the READER falls asleep (scrolls.c: no_command += rnd(SLEEPTIME)+4).
+      player.frozen = Math.max(player.frozen, rng.randint(4, 8));
+      return 'You fall asleep.';
     }
     if (key === 'monster_conf') {
       player.confusingTouch = true;
@@ -525,8 +542,9 @@ export class Scroll extends Item {
       return 'You have no armor to protect.';
     }
     if (key === 'scare_monster') {
-      for (const m of engine.monsters) m.scared = (m.scared || 0) + 20;
-      return 'The monsters flee!';
+      // Reading it wastes it (scrolls.c). Its power is when DROPPED: monsters
+      // refuse to step onto its square (see Monster movement / scareSquares).
+      return 'You hear maniacal laughter in the distance.';
     }
     if (key === 'food_detect') {
       const n = engine.detectItems((it) => it instanceof Food);
@@ -833,6 +851,17 @@ function maybeEnchant(): { enchant: number; cursed: boolean } {
     return { enchant: -rng.randint(1, 3), cursed: true };
   }
   return { enchant: 0, cursed: false };
+}
+
+/** Template lookups by name — used to migrate v1 saves that lack templateIdx. */
+export function weaponTemplateIndexByName(name: string): number {
+  const i = WEAPONS.findIndex((w) => w.name === name);
+  return i >= 0 ? i : 0;
+}
+
+export function armorTemplateIndexByName(name: string): number {
+  const i = ARMORS.findIndex((a) => a.name === name);
+  return i >= 0 ? i : 0;
 }
 
 export interface ItemRegistries {

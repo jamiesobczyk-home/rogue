@@ -16,7 +16,7 @@ import {
   addDam,
 } from './constants';
 import { rng } from './rng';
-import type { Item, Ring } from './items';
+import type { Item, Ring, Weapon } from './items';
 
 // ---------------------------------------------------------------------------
 // Entity  (anything that occupies a tile)
@@ -242,6 +242,22 @@ export class Player extends Actor {
   // -- Inventory ---------------------------------------------------
 
   addItem(item: Item): string | null {
+    // Missiles stack into an existing matching slot (original o_count).
+    if (item.kind === 'weapon' && (item as Weapon).missile) {
+      const w = item as Weapon;
+      const existing = this.inventory.find(
+        (i) =>
+          i !== item &&
+          i.kind === 'weapon' &&
+          i.name === w.name &&
+          (i as Weapon).enchant === w.enchant &&
+          i.cursed === w.cursed,
+      ) as Weapon | undefined;
+      if (existing) {
+        existing.count += w.count;
+        return this.itemSlot(existing);
+      }
+    }
     if (this.inventory.length >= MAX_INVENTORY) return null;
     this.inventory.push(item);
     return String.fromCharCode('a'.charCodeAt(0) + this.inventory.length - 1);
