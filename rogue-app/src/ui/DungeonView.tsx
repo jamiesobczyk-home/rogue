@@ -28,7 +28,11 @@ interface Glyph {
   color: string;
 }
 
-const BLANK: Glyph = { ch: ' ', color: COLORS.bg };
+// Blank cells MUST be non-breaking spaces: rows render as text runs, and on
+// react-native-web ordinary spaces are HTML whitespace — leading runs get
+// stripped and inner runs collapse, shifting every glyph out of its column.
+const NBSP = ' ';
+const BLANK: Glyph = { ch: NBSP, color: COLORS.bg };
 
 function buildViewport(data: RenderData): Glyph[][] {
   const [px, py] = data.player;
@@ -106,9 +110,10 @@ interface Run {
 function toRuns(line: Glyph[]): Run[] {
   const runs: Run[] = [];
   for (const g of line) {
+    const ch = g.ch === ' ' ? NBSP : g.ch; // keep every source of blanks collapse-proof
     const last = runs[runs.length - 1];
-    if (last && last.color === g.color) last.text += g.ch;
-    else runs.push({ text: g.ch, color: g.color });
+    if (last && last.color === g.color) last.text += ch;
+    else runs.push({ text: ch, color: g.color });
   }
   return runs;
 }
@@ -127,6 +132,7 @@ export function DungeonView({ data, cellSize }: { data: RenderData; cellSize: nu
       {rows.map((runs, r) => (
         <Text
           key={r}
+          testID={`dungeon-row-${r}`}
           allowFontScaling={false}
           numberOfLines={1}
           style={{

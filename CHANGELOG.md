@@ -6,6 +6,15 @@ mirrored in `rogue-app/package.json`, exposed at runtime via
 (`__tests__/version.test.ts`) fails if the three drift apart. Bump the
 version in both JSON files and add an entry here with every release.
 
+## 1.1.1 — 2026-07-06
+
+- Fix dungeon map misalignment on web introduced by the 1.1.0 row renderer:
+  blank cells rendered as ordinary spaces, which HTML collapses/strips, so
+  rows shifted left as the hero moved and map glyphs (corridors, doors,
+  stairs) no longer matched their true positions. Blanks are now
+  non-breaking spaces; a browser test asserts uniform row widths and a
+  stable hero column across vertical movement.
+
 ## 1.1.0 — 2026-07-05
 
 Fidelity fixes (verified against the published Rogue 5.4.4 C source):
